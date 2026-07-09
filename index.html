@@ -45,7 +45,30 @@
       </select>
       <button id="resetBtn">Reset</button>
     </section>
+    <section class="kpi-panel">
+  <div class="kpi-card">
+    <div class="kpi-title">Selected Part</div>
+    <div id="kpiPart" class="kpi-value">All</div>
+  </div>
 
+  <div class="kpi-card">
+    <div class="kpi-title">Current Stage</div>
+    <div id="kpiStage" class="kpi-value">-</div>
+    <div id="kpiStageColor" class="kpi-line"></div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-title">Stage Date</div>
+    <div id="kpiDate" class="kpi-value">-</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-title">Delay</div>
+    <div id="kpiDelay" class="kpi-value">-</div>
+  </div>
+</section>
+
+<section class="legend-panel" id="legendPanel"></section>
     <section class="gantt-card">
       <div class="gantt-title">
         <h2>Gantt Chart</h2>

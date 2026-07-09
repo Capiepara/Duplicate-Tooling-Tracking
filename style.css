@@ -215,3 +215,74 @@ select:disabled {
   white-space: pre;
   font-size: 11px;
 }
+.kpi-panel {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.kpi-card {
+  background: white;
+  border: 1px solid #d9dee7;
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-height: 86px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.kpi-title {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 800;
+}
+
+.kpi-value {
+  margin-top: 8px;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.kpi-line {
+  height: 5px;
+  margin-top: 10px;
+  border-radius: 0;
+  background: #d1d5db;
+}
+
+.legend-panel {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.legend-color {
+  width: 18px;
+  height: 12px;
+  border-radius: 0;
+}
+
+/* sửa thanh gantt vuông, fill hết row */
+.stage-bar {
+  top: 0 !important;
+  height: 100% !important;
+  border-radius: 0 !important;
+}
+
+/* row cao giống Excel */
+.timeline-cell {
+  height: 28px !important;
+}

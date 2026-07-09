@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Development Tracking Gantt</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- SheetJS đọc Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+</head>
+
+<body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <h1>Development Tracking Gantt</h1>
+        <p>Import Excel and select sheet</p>
+      </div>
+
+      <label class="import-btn">
+        Import Excel
+        <input type="file" id="excelFile" accept=".xlsx,.xls,.xlsm" hidden />
+      </label>
+    </header>
+
+    <section class="control-panel">
+      <div class="control-item">
+        <label>Selected File</label>
+        <div id="fileName" class="file-name">No file selected</div>
+      </div>
+
+      <div class="control-item">
+        <label>Sheet</label>
+        <select id="sheetSelect" disabled>
+          <option value="">Please import Excel first</option>
+        </select>
+      </div>
+
+      <button id="loadSheetBtn" disabled>Load Sheet</button>
+    </section>
+
+    <section class="preview-section">
+      <div class="preview-header">
+        <h2>Excel Preview</h2>
+        <span id="rowCount">0 rows</span>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="previewTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

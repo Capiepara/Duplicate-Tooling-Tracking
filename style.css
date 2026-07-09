@@ -6,31 +6,38 @@ body {
   margin: 0;
   font-family: Nunito, Arial, sans-serif;
   background: #f4f6f8;
-  color: #1f2937;
+  color: #111827;
 }
 
 .app {
-  padding: 20px;
+  padding: 14px;
 }
 
-.header {
-  background: white;
-  border-radius: 14px;
-  padding: 18px 22px;
+.topbar,
+.control-panel,
+.filter-panel,
+.gantt-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.topbar {
+  padding: 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
 }
 
-.header h1 {
+.topbar h1 {
   margin: 0;
-  font-size: 22px;
+  font-size: 18px;
 }
 
-.header p {
+.topbar p {
   margin: 4px 0 0;
+  font-size: 13px;
   color: #6b7280;
 }
 
@@ -38,56 +45,49 @@ body {
   background: #009999;
   color: white;
   padding: 11px 18px;
-  border-radius: 10px;
-  cursor: pointer;
+  border-radius: 8px;
   font-weight: 700;
+  cursor: pointer;
 }
 
-.control-panel {
-  margin-top: 16px;
-  background: white;
-  border-radius: 14px;
-  padding: 16px;
+.control-panel,
+.filter-panel {
+  padding: 14px;
   display: flex;
-  gap: 14px;
+  gap: 12px;
   align-items: end;
-  border: 1px solid #e5e7eb;
 }
 
 .control-item {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 220px;
 }
 
 .control-item label {
-  font-size: 13px;
-  font-weight: 700;
-  color: #374151;
+  font-size: 11px;
+  font-weight: 800;
 }
 
-.file-name,
-select {
-  height: 40px;
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  padding: 9px 12px;
+.input-box,
+select,
+input {
+  height: 36px;
+  min-width: 170px;
+  border: 1px solid #cfd6df;
+  border-radius: 8px;
+  padding: 8px 10px;
   background: #f9fafb;
 }
 
-select {
-  cursor: pointer;
-}
-
 button {
-  height: 40px;
+  height: 36px;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 0 18px;
   background: #182b55;
   color: white;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
 }
 
@@ -97,57 +97,121 @@ select:disabled {
   cursor: not-allowed;
 }
 
-.preview-section {
-  margin-top: 16px;
-  background: white;
-  border-radius: 14px;
-  border: 1px solid #e5e7eb;
+.gantt-card {
   overflow: hidden;
 }
 
-.preview-header {
-  padding: 14px 16px;
+.gantt-title {
+  padding: 12px 14px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
   border-bottom: 1px solid #e5e7eb;
 }
 
-.preview-header h2 {
+.gantt-title h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
 }
 
-.preview-header span {
-  color: #6b7280;
-  font-size: 13px;
-}
-
-.table-wrapper {
-  overflow: auto;
-  max-height: 70vh;
-}
-
-table {
-  border-collapse: collapse;
-  width: max-content;
-  min-width: 100%;
+.gantt-title span {
   font-size: 12px;
+  color: #6b7280;
 }
 
-th,
-td {
+.gantt-wrapper {
+  overflow: auto;
+  max-height: 75vh;
+}
+
+.gantt-grid {
+  min-width: max-content;
+  position: relative;
+}
+
+.gantt-header,
+.gantt-row {
+  display: grid;
+  grid-template-columns: 90px 90px 1200px;
+}
+
+.gantt-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.left-head {
+  background: #009999;
+  color: white;
+  font-weight: 800;
   border: 1px solid #d1d5db;
-  padding: 7px 9px;
-  white-space: nowrap;
-  min-width: 90px;
+  padding: 10px;
   text-align: center;
 }
 
-th {
-  background: #009999;
+.timeline-head {
+  display: flex;
+  background: #b7d0a8;
+  border-top: 1px solid #8da47e;
+  border-bottom: 1px solid #8da47e;
+}
+
+.week-cell {
+  width: 42px;
+  min-width: 42px;
+  border-right: 1px solid #8da47e;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 6px 0;
+}
+
+.part-cell,
+.type-cell {
+  border: 1px solid #d1d5db;
+  padding: 8px;
+  font-size: 12px;
+  text-align: center;
+  background: white;
+}
+
+.type-original {
+  background: #51b89f;
+  font-weight: 700;
+}
+
+.type-actual {
+  background: #ffc64b;
+  font-weight: 700;
+}
+
+.timeline-cell {
+  position: relative;
+  height: 34px;
+  border-bottom: 1px solid #d1d5db;
+  background-image: linear-gradient(to right, #d1d5db 1px, transparent 1px);
+  background-size: 42px 100%;
+}
+
+.stage-bar {
+  position: absolute;
+  top: 8px;
+  height: 18px;
+  border-radius: 10px;
+  min-width: 4px;
+  cursor: pointer;
+}
+
+.stage-bar:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  top: 24px;
+  z-index: 99;
+  background: #111827;
   color: white;
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  padding: 8px 10px;
+  border-radius: 8px;
+  white-space: pre;
+  font-size: 11px;
 }

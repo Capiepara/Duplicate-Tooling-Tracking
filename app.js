@@ -3,22 +3,22 @@ let rawData = [];
 let ganttRows = [];
 let allWeeks = [];
 
-const STAGES = [
-  { name: "2D/3D Drawing", color: "#900C3F" },
-  { name: "Tooling Spec Date", color: "#182B55" },
-  { name: "Quotation", color: "#4871CC" },
-  { name: "CAR", color: "#5F4E94" },
-  { name: "POR", color: "#A291C7" },
-  { name: "Tooling build", color: "#82CBEC" },
-  { name: "FAI", color: "#D94F21" },
-  { name: "QB Building", color: "#FEBD2B" },
-  { name: "QB Testing complete date", color: "#9AAB4B" },
-  { name: "PR building", color: "#D6568C" },
-  { name: "SER fully release date", color: "#009999" },
-];
-
-const WEEK_WIDTH = 42;
+const WEEK_WIDTH = 44;
 const DAY_WIDTH = WEEK_WIDTH / 7;
+
+const STAGES = [
+  { key: "2d", name: "2D/3D Drawing", color: "#900C3F", aliases: ["2d/3d drawing", "2d", "3d"] },
+  { key: "toolingSpec", name: "Tooling Spec Date", color: "#182B55", aliases: ["tooling spec date", "tooling spec"] },
+  { key: "quotation", name: "Quotation", color: "#4871CC", aliases: ["quotation"] },
+  { key: "car", name: "CAR", color: "#5F4E94", aliases: ["car"] },
+  { key: "por", name: "POR", color: "#A291C7", aliases: ["por"] },
+  { key: "toolingBuild", name: "Tooling Build", color: "#82CBEC", aliases: ["tooling build", "tooling buid"] },
+  { key: "fai", name: "FAI", color: "#D94F21", aliases: ["fai"] },
+  { key: "qbBuilding", name: "QB Building", color: "#FEBD2B", aliases: ["qb building"] },
+  { key: "qbTesting", name: "QB Testing Complete", color: "#9AAB4B", aliases: ["qb testing complete", "qb testing complete date"] },
+  { key: "pr", name: "PR Building", color: "#D6568C", aliases: ["pr building"] },
+  { key: "ser", name: "SER Fully Release", color: "#009999", aliases: ["ser fully release", "ser fully release date"] },
+];
 
 const excelFile = document.getElementById("excelFile");
 const fileName = document.getElementById("fileName");
@@ -93,7 +93,7 @@ function buildStageFilter() {
 
   STAGES.forEach((stage) => {
     const option = document.createElement("option");
-    option.value = stage.name;
+    option.value = stage.key;
     option.textContent = stage.name;
     stageFilter.appendChild(option);
   });
@@ -102,36 +102,51 @@ function buildStageFilter() {
 function parseGanttRows() {
   ganttRows = [];
 
-  const headerRow = rawData[0] || [];
-  const subHeaderRow = rawData[1] || [];
+  const headerInfo = findHeaderRows();
+  if (!headerInfo) {
+    alert("Không tìm thấy header stage. Kiểm tra file Excel.");
+    return;
+  }
 
-  const stageMap = getStageColumnMap(headerRow, subHeaderRow);
+  const { stageRowIndex, subRowIndex } = headerInfo;
+  const stageMap = getStageColumnMap(stageRowIndex, subRowIndex);
 
-  for (let i = 2; i < rawData.length; i++) {
-    const row = rawData[i];
+  let currentPart = "";
 
-    const partNo = row[0] || "";
-    const type = row[1] || "";
+  for (let r = subRowIndex + 1; r < rawData.length; r++) {
+    const row = rawData[r];
 
-    if (!partNo && !type) continue;
-    if (!["Original", "Actual"].includes(type)) continue;
+    const partNo = clean(row[0]) || currentPart;
+    const type = clean(row[1]);
+
+    if (clean(row[0])) currentPart = clean(row[0]);
+
+    if (!partNo) continue;
+    if (type !== "Original" && type !== "Actual") continue;
 
     const stages = [];
 
     STAGES.forEach((stage) => {
-      const cols = stageMap[stage.name];
+      const cols = stageMap[stage.key];
       if (!cols) return;
 
       const target = parseDate(row[cols.target]);
       const estimate = parseDate(row[cols.estimate]);
       const actual = parseDate(row[cols.actual]);
 
-      const start = target;
-      const end = actual || estimate || target;
+      let start = target;
+      let end = actual || estimate || target;
 
       if (!start || !end) return;
 
+      if (end < start) {
+        const temp = start;
+        start = end;
+        end = temp;
+      }
+
       stages.push({
+        key: stage.key,
         name: stage.name,
         color: stage.color,
         start,
@@ -139,6 +154,7 @@ function parseGanttRows() {
         target,
         estimate,
         actual,
+        using: actual ? "Actual" : "Estimate",
       });
     });
 
@@ -152,61 +168,152 @@ function parseGanttRows() {
   allWeeks = generateWeeks(ganttRows);
 }
 
-function getStageColumnMap(headerRow, subHeaderRow) {
+function findHeaderRows() {
+  for (let r = 0; r < Math.min(rawData.length, 12); r++) {
+    const rowText = rawData[r].map(clean).join(" ").toLowerCase();
+
+    const hasStage = STAGES.some((s) =>
+      s.aliases.some((a) => rowText.includes(a))
+    );
+
+    const nextRow = rawData[r + 1] || [];
+    const nextText = nextRow.map(clean).join(" ").toLowerCase();
+
+    const hasSubHeader =
+      nextText.includes("target") ||
+      nextText.includes("estimate") ||
+      nextText.includes("actual");
+
+    if (hasStage && hasSubHeader) {
+      return {
+        stageRowIndex: r,
+        subRowIndex: r + 1,
+      };
+    }
+  }
+
+  return null;
+}
+
+function getStageColumnMap(stageRowIndex, subRowIndex) {
   const map = {};
-  let currentStage = "";
+  const stageRow = rawData[stageRowIndex];
+  const subRow = rawData[subRowIndex];
 
-  for (let c = 0; c < headerRow.length; c++) {
-    if (headerRow[c]) {
-      currentStage = normalizeStageName(headerRow[c]);
+  let currentStageKey = null;
+
+  for (let c = 0; c < stageRow.length; c++) {
+    const stageText = normalize(stageRow[c]);
+
+    const matchedStage = STAGES.find((stage) =>
+      stage.aliases.some((alias) => stageText.includes(alias))
+    );
+
+    if (matchedStage) {
+      currentStageKey = matchedStage.key;
     }
 
-    const sub = String(subHeaderRow[c] || "").trim();
+    if (!currentStageKey) continue;
 
-    const stage = STAGES.find((s) => normalizeStageName(s.name) === currentStage);
-    if (!stage) continue;
+    const sub = normalize(subRow[c]);
 
-    if (!map[stage.name]) {
-      map[stage.name] = {};
+    if (!map[currentStageKey]) {
+      map[currentStageKey] = {};
     }
 
-    if (sub === "Target") map[stage.name].target = c;
-    if (sub === "Estimate") map[stage.name].estimate = c;
-    if (sub === "Actual") map[stage.name].actual = c;
+    if (sub.includes("target")) map[currentStageKey].target = c;
+    if (sub.includes("estimate")) map[currentStageKey].estimate = c;
+    if (sub.includes("actual")) map[currentStageKey].actual = c;
   }
 
   return map;
 }
 
-function normalizeStageName(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+function renderGantt() {
+  ganttGrid.innerHTML = "";
+
+  const search = partSearch.value.trim().toLowerCase();
+  const selectedStage = stageFilter.value;
+
+  const filteredRows = ganttRows.filter((row) => {
+    return String(row.partNo).toLowerCase().includes(search);
+  });
+
+  renderHeader();
+
+  filteredRows.forEach((row) => {
+    renderRow(row, selectedStage);
+  });
+
+  summaryText.textContent = `${filteredRows.length} rows`;
 }
 
-function parseDate(value) {
-  if (!value) return null;
+function renderHeader() {
+  const header = document.createElement("div");
+  header.className = "gantt-header";
 
-  if (value instanceof Date && !isNaN(value)) return value;
+  const timelineWidth = allWeeks.length * WEEK_WIDTH;
 
-  const text = String(value).trim();
+  header.innerHTML = `
+    <div class="left-head">Part No.</div>
+    <div class="left-head">Original<br>/ Actual</div>
+    <div class="timeline-head" style="width:${timelineWidth}px">
+      ${allWeeks.map((w) => `
+        <div class="week-cell">
+          <div>WK ${getWeekNumber(w)}</div>
+          <small>${formatDate(w)}</small>
+        </div>
+      `).join("")}
+    </div>
+  `;
 
-  const parts = text.split(/[\/\-]/);
-  if (parts.length >= 2) {
-    const month = Number(parts[0]);
-    const day = Number(parts[1]);
-    const year = parts[2] ? Number(parts[2]) : 2026;
+  ganttGrid.appendChild(header);
+}
 
-    if (!isNaN(month) && !isNaN(day)) {
-      return new Date(year, month - 1, day);
-    }
-  }
+function renderRow(row, selectedStage) {
+  const rowDiv = document.createElement("div");
+  rowDiv.className = "gantt-row";
 
-  const parsed = new Date(text);
-  if (!isNaN(parsed)) return parsed;
+  const partCell = document.createElement("div");
+  partCell.className = "part-cell";
+  partCell.textContent = row.type === "Original" ? row.partNo : "";
 
-  return null;
+  const typeCell = document.createElement("div");
+  typeCell.className = `type-cell ${row.type === "Original" ? "type-original" : "type-actual"}`;
+  typeCell.textContent = row.type;
+
+  const timeline = document.createElement("div");
+  timeline.className = "timeline-cell";
+  timeline.style.width = `${allWeeks.length * WEEK_WIDTH}px`;
+
+  row.stages
+    .filter((stage) => selectedStage === "ALL" || stage.key === selectedStage)
+    .forEach((stage) => {
+      const bar = document.createElement("div");
+      bar.className = "stage-bar";
+      bar.style.background = stage.color;
+
+      const left = getDateOffset(stage.start);
+      const width = Math.max(getDateDiff(stage.start, stage.end) * DAY_WIDTH, 8);
+
+      bar.style.left = `${left}px`;
+      bar.style.width = `${width}px`;
+
+      bar.dataset.tip =
+        `${stage.name}\n` +
+        `Target: ${formatDate(stage.target)}\n` +
+        `Estimate: ${formatDate(stage.estimate)}\n` +
+        `Actual: ${formatDate(stage.actual)}\n` +
+        `Using: ${stage.using}`;
+
+      timeline.appendChild(bar);
+    });
+
+  rowDiv.appendChild(partCell);
+  rowDiv.appendChild(typeCell);
+  rowDiv.appendChild(timeline);
+
+  ganttGrid.appendChild(rowDiv);
 }
 
 function generateWeeks(rows) {
@@ -236,12 +343,33 @@ function generateWeeks(rows) {
   return weeks;
 }
 
+function getDateOffset(date) {
+  if (!allWeeks.length || !date) return 0;
+
+  const start = allWeeks[0];
+  const diffDays = getDateDiff(start, date) - 1;
+
+  return diffDays * DAY_WIDTH;
+}
+
+function getDateDiff(start, end) {
+  const s = new Date(start);
+  const e = new Date(end);
+
+  s.setHours(0, 0, 0, 0);
+  e.setHours(0, 0, 0, 0);
+
+  return Math.round((e - s) / 86400000) + 1;
+}
+
 function getMonday(date) {
   const d = new Date(date);
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
+
   d.setDate(d.getDate() + diff);
   d.setHours(0, 0, 0, 0);
+
   return d;
 }
 
@@ -256,104 +384,30 @@ function getWeekNumber(date) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
-function renderGantt() {
-  ganttGrid.innerHTML = "";
+function parseDate(value) {
+  if (!value) return null;
 
-  const search = partSearch.value.trim().toLowerCase();
-  const selectedStage = stageFilter.value;
+  if (value instanceof Date && !isNaN(value)) return value;
 
-  const filteredRows = ganttRows.filter((row) => {
-    const matchPart = String(row.partNo).toLowerCase().includes(search);
-    return matchPart;
-  });
+  const text = String(value).trim();
+  if (!text) return null;
 
-  renderHeader();
+  const parts = text.split(/[\/\-]/);
 
-  filteredRows.forEach((row) => {
-    renderRow(row, selectedStage);
-  });
+  if (parts.length >= 2) {
+    const month = Number(parts[0]);
+    const day = Number(parts[1]);
+    const year = parts[2] ? Number(parts[2]) : 2026;
 
-  summaryText.textContent = `${filteredRows.length} rows`;
-}
+    if (!isNaN(month) && !isNaN(day)) {
+      return new Date(year, month - 1, day);
+    }
+  }
 
-function renderHeader() {
-  const header = document.createElement("div");
-  header.className = "gantt-header";
+  const parsed = new Date(text);
+  if (!isNaN(parsed)) return parsed;
 
-  header.innerHTML = `
-    <div class="left-head">Part No.</div>
-    <div class="left-head">Original / Actual</div>
-    <div class="timeline-head">
-      ${allWeeks.map((w) => `<div class="week-cell">WK ${getWeekNumber(w)}</div>`).join("")}
-    </div>
-  `;
-
-  ganttGrid.appendChild(header);
-}
-
-function renderRow(row, selectedStage) {
-  const rowDiv = document.createElement("div");
-  rowDiv.className = "gantt-row";
-
-  const partCell = document.createElement("div");
-  partCell.className = "part-cell";
-  partCell.textContent = row.partNo;
-
-  const typeCell = document.createElement("div");
-  typeCell.className = `type-cell ${row.type === "Original" ? "type-original" : "type-actual"}`;
-  typeCell.textContent = row.type;
-
-  const timeline = document.createElement("div");
-  timeline.className = "timeline-cell";
-  timeline.style.width = `${allWeeks.length * WEEK_WIDTH}px`;
-
-  row.stages
-    .filter((stage) => selectedStage === "ALL" || stage.name === selectedStage)
-    .forEach((stage) => {
-      const bar = document.createElement("div");
-      bar.className = "stage-bar";
-      bar.style.background = stage.color;
-
-      const left = getDateOffset(stage.start);
-      const width = Math.max(getDateDiff(stage.start, stage.end) * DAY_WIDTH, 8);
-
-      bar.style.left = `${left}px`;
-      bar.style.width = `${width}px`;
-
-      bar.dataset.tip =
-        `${stage.name}\n` +
-        `Target: ${formatDate(stage.target)}\n` +
-        `Estimate: ${formatDate(stage.estimate)}\n` +
-        `Actual: ${formatDate(stage.actual)}\n` +
-        `Using: ${stage.actual ? "Actual" : "Estimate"}`;
-
-      timeline.appendChild(bar);
-    });
-
-  rowDiv.appendChild(partCell);
-  rowDiv.appendChild(typeCell);
-  rowDiv.appendChild(timeline);
-
-  ganttGrid.appendChild(rowDiv);
-}
-
-function getDateOffset(date) {
-  if (!allWeeks.length) return 0;
-
-  const start = allWeeks[0];
-  const diffDays = getDateDiff(start, date);
-
-  return diffDays * DAY_WIDTH;
-}
-
-function getDateDiff(start, end) {
-  const s = new Date(start);
-  const e = new Date(end);
-
-  s.setHours(0, 0, 0, 0);
-  e.setHours(0, 0, 0, 0);
-
-  return Math.max(1, Math.round((e - s) / 86400000) + 1);
+  return null;
 }
 
 function formatDate(date) {
@@ -363,6 +417,17 @@ function formatDate(date) {
   const dd = String(date.getDate()).padStart(2, "0");
 
   return `${mm}/${dd}`;
+}
+
+function normalize(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function clean(value) {
+  return String(value || "").trim();
 }
 
 function resetFilters() {

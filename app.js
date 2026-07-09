@@ -97,6 +97,7 @@ function buildStageFilter() {
     option.textContent = stage.name;
     stageFilter.appendChild(option);
   });
+  renderLegend();
 }
 
 function parseGanttRows() {
@@ -246,6 +247,7 @@ function renderGantt() {
   });
 
   summaryText.textContent = `${filteredRows.length} rows`;
+  updateKPI(filteredRows);
 }
 
 function renderHeader() {
@@ -434,4 +436,68 @@ function resetFilters() {
   partSearch.value = "";
   stageFilter.value = "ALL";
   renderGantt();
+}
+function renderLegend() {
+  const legendPanel = document.getElementById("legendPanel");
+  if (!legendPanel) return;
+
+  legendPanel.innerHTML = STAGES.map(stage => `
+    <div class="legend-item">
+      <span class="legend-color" style="background:${stage.color}"></span>
+      <span>${stage.name}</span>
+    </div>
+  `).join("");
+}
+
+function updateKPI(filteredRows) {
+  const kpiPart = document.getElementById("kpiPart");
+  const kpiStage = document.getElementById("kpiStage");
+  const kpiDate = document.getElementById("kpiDate");
+  const kpiDelay = document.getElementById("kpiDelay");
+  const kpiStageColor = document.getElementById("kpiStageColor");
+
+  if (!filteredRows.length) {
+    kpiPart.textContent = "-";
+    kpiStage.textContent = "-";
+    kpiDate.textContent = "-";
+    kpiDelay.textContent = "-";
+    kpiStageColor.style.background = "#d1d5db";
+    return;
+  }
+
+  const search = partSearch.value.trim();
+
+  if (!search) {
+    kpiPart.textContent = "All";
+    kpiStage.textContent = "Multiple";
+    kpiDate.textContent = "-";
+    kpiDelay.textContent = "-";
+    kpiStageColor.style.background = "#d1d5db";
+    return;
+  }
+
+  const actualRow = filteredRows.find(r => r.type === "Actual") || filteredRows[0];
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let currentStage =
+    actualRow.stages.find(s => today >= s.start && today <= s.end) ||
+    actualRow.stages.find(s => today < s.start) ||
+    actualRow.stages[actualRow.stages.length - 1];
+
+  if (!currentStage) return;
+
+  let delayText = "-";
+
+  if (currentStage.actual && currentStage.estimate) {
+    const delayDays = getDateDiff(currentStage.estimate, currentStage.actual) - 1;
+    delayText = delayDays > 0 ? `+${delayDays} days` : "On time";
+  }
+
+  kpiPart.textContent = actualRow.partNo;
+  kpiStage.textContent = currentStage.name;
+  kpiDate.textContent = formatDate(currentStage.actual || currentStage.estimate || currentStage.end);
+  kpiDelay.textContent = delayText;
+  kpiStageColor.style.background = currentStage.color;
 }

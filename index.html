@@ -5,17 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Development Tracking Gantt</title>
   <link rel="stylesheet" href="style.css" />
-
-  <!-- SheetJS đọc Excel -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 
 <body>
   <div class="app">
-    <header class="header">
+    <header class="topbar">
       <div>
         <h1>Development Tracking Gantt</h1>
-        <p>Import Excel and select sheet</p>
+        <p>Import Excel and render Gantt chart</p>
       </div>
 
       <label class="import-btn">
@@ -27,30 +25,35 @@
     <section class="control-panel">
       <div class="control-item">
         <label>Selected File</label>
-        <div id="fileName" class="file-name">No file selected</div>
+        <div id="fileName" class="input-box">No file selected</div>
       </div>
 
       <div class="control-item">
         <label>Sheet</label>
         <select id="sheetSelect" disabled>
-          <option value="">Please import Excel first</option>
+          <option>Please import Excel first</option>
         </select>
       </div>
 
       <button id="loadSheetBtn" disabled>Load Sheet</button>
     </section>
 
-    <section class="preview-section">
-      <div class="preview-header">
-        <h2>Excel Preview</h2>
-        <span id="rowCount">0 rows</span>
+    <section class="filter-panel">
+      <input id="partSearch" placeholder="Search Part No..." />
+      <select id="stageFilter">
+        <option value="ALL">All Stages</option>
+      </select>
+      <button id="resetBtn">Reset</button>
+    </section>
+
+    <section class="gantt-card">
+      <div class="gantt-title">
+        <h2>Gantt Chart</h2>
+        <span id="summaryText">No data</span>
       </div>
 
-      <div class="table-wrapper">
-        <table id="previewTable">
-          <thead></thead>
-          <tbody></tbody>
-        </table>
+      <div class="gantt-wrapper">
+        <div id="ganttGrid" class="gantt-grid"></div>
       </div>
     </section>
   </div>

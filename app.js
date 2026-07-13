@@ -344,6 +344,60 @@
         continue;
       }
 
+      /*
+       * Excel only shows MM/DD in most cells.
+       * Infer the year from left to right:
+       * 12/28 followed by 01/27 means the second date belongs to the next year.
+       */
+      const reportStart =
+        parseHtmlDate(dom.reportStart.value) || DEFAULT_REPORT_START;
+
+      const dateContext = {
+        year: reportStart.getFullYear(),
+        previousMonth: reportStart.getMonth() + 1,
+      };
+
+      const dateEntries = [];
+
+      STAGES.forEach((stage) => {
+        const columns = columnMap[stage.key];
+
+        if (!columns) {
+          return;
+        }
+
+        ["target", "estimate", "actual"].forEach((field) => {
+          const columnIndex = columns[field];
+
+          if (columnIndex === null || columnIndex === undefined) {
+            return;
+          }
+
+          dateEntries.push({
+            stageKey: stage.key,
+            field,
+            columnIndex,
+            value: row[columnIndex],
+          });
+        });
+      });
+
+      dateEntries.sort((a, b) => a.columnIndex - b.columnIndex);
+
+      const resolvedDates = new Map();
+
+      dateEntries.forEach((entry) => {
+        const date = parseExcelDateWithYearContext(
+          entry.value,
+          dateContext
+        );
+
+        resolvedDates.set(
+          `${entry.stageKey}:${entry.field}`,
+          date
+        );
+      });
+
       const milestones = STAGES.map((stage) => {
         const columns = columnMap[stage.key];
 
@@ -353,15 +407,12 @@
 
         return {
           stage,
-          target: parseExcelDate(
-            columns.target === null ? null : row[columns.target]
-          ),
-          estimate: parseExcelDate(
-            columns.estimate === null ? null : row[columns.estimate]
-          ),
-          actual: parseExcelDate(
-            columns.actual === null ? null : row[columns.actual]
-          ),
+          target:
+            resolvedDates.get(`${stage.key}:target`) || null,
+          estimate:
+            resolvedDates.get(`${stage.key}:estimate`) || null,
+          actual:
+            resolvedDates.get(`${stage.key}:actual`) || null,
         };
       }).filter(Boolean);
 
@@ -938,6 +989,101 @@
           value.includes(alias)
       )
     ) || null;
+  }
+
+  function parseExcelDateWithYearContext(value, context) {
+    if (value === null || value === undefined || value === "") {
+      return null;
+    }
+
+    /*
+     * Real Excel Date objects and serial numbers already contain a year.
+     * Keep that year and refresh the inference context.
+     */
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      const date = stripTime(value);
+      context.year = date.getFullYear();
+      context.previousMonth = date.getMonth() + 1;
+      return date;
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const parsed = XLSX.SSF.parse_date_code(value);
+
+      if (parsed) {
+        const date = new Date(parsed.y, parsed.m - 1, parsed.d);
+        context.year = date.getFullYear();
+        context.previousMonth = date.getMonth() + 1;
+        return stripTime(date);
+      }
+    }
+
+    const text = clean(value);
+
+    if (!text) {
+      return null;
+    }
+
+    const match = text.match(
+      /^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?$/
+    );
+
+    if (!match) {
+      const fallback = new Date(text);
+
+      if (Number.isNaN(fallback.getTime())) {
+        return null;
+      }
+
+      const date = stripTime(fallback);
+      context.year = date.getFullYear();
+      context.previousMonth = date.getMonth() + 1;
+      return date;
+    }
+
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    const explicitYear = match[3];
+
+    if (explicitYear) {
+      let year = Number(explicitYear);
+
+      if (year < 100) {
+        year += 2000;
+      }
+
+      const date = new Date(year, month - 1, day);
+
+      if (Number.isNaN(date.getTime())) {
+        return null;
+      }
+
+      context.year = year;
+      context.previousMonth = month;
+      return stripTime(date);
+    }
+
+    /*
+     * Detect a year rollover.
+     * Example: 12/28 -> 01/27 changes 2026 to 2027.
+     * A six-month drop is used so small out-of-order dates inside one stage
+     * do not accidentally create a new year.
+     */
+    if (
+      context.previousMonth !== null &&
+      month + 6 < context.previousMonth
+    ) {
+      context.year += 1;
+    }
+
+    const date = new Date(context.year, month - 1, day);
+
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+
+    context.previousMonth = month;
+    return stripTime(date);
   }
 
   function parseExcelDate(value) {

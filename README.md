@@ -30,3 +30,10 @@ Then in GitHub Desktop:
 - Delay from an earlier stage is carried forward to later stages without Actual dates.
 - Bars are rectangular and fill the entire row.
 - Timeline includes Year, Week number, and week start date.
+
+
+## V7.1 fix
+
+- Correctly infers the year for MM/DD values.
+- Example: `12/28` followed by `01/27` becomes Dec 2026 followed by Jan 2027.
+- Prevents the forecast from being incorrectly pushed into 2028.

@@ -791,51 +791,69 @@
       dom.kpiFinish.textContent = "—";
       dom.kpiDelay.textContent = "—";
       dom.kpiDelay.className = "kpi-value";
+      dom.kpiDelayFoot.textContent = "Compared with Current Stage Target";
       dom.kpiProgress.textContent = "0%";
       dom.progressBar.style.width = "0%";
       return;
     }
 
-    const today = stripTime(new Date());
     const schedule = selectedPart.actual;
 
-    let current = schedule[schedule.length - 1] || null;
+    /*
+     * Current Stage:
+     * - First stage with blank Actual.
+     * - If every stage has Actual, use the final stage.
+     */
+    let current = schedule.find((item) => !item.actual);
 
-    for (let index = 0; index < schedule.length; index += 1) {
-      const item = schedule[index];
-      const next = schedule[index + 1];
-
-      if (!next || today < next.date) {
-        current = item;
-        break;
-      }
+    if (!current && schedule.length) {
+      current = schedule[schedule.length - 1];
     }
 
-    const completedActual = schedule.filter(
-      (item) => item.actual && item.actual <= today
+    const completedStages = schedule.filter(
+      (item) => Boolean(item.actual)
     ).length;
 
     const progress = Math.round(
-      (completedActual / Math.max(1, schedule.length)) * 100
+      (completedStages / Math.max(1, schedule.length)) * 100
     );
 
-    const delay = getPartDelay(selectedPart);
-    const finish = schedule.length
-      ? schedule[schedule.length - 1].date
+    const currentDate = current
+      ? cloneDate(
+          current.actual ||
+          current.estimate ||
+          current.target ||
+          current.date
+        )
       : null;
+
+    const targetDate = current
+      ? cloneDate(current.target)
+      : null;
+
+    const stageDelay =
+      currentDate && targetDate
+        ? Math.max(0, diffDays(targetDate, currentDate))
+        : 0;
 
     dom.kpiPart.textContent = selectedPart.partNo;
     dom.kpiStage.textContent = current ? current.stage.name : "—";
     dom.kpiStageStrip.style.background = current
       ? current.stage.color
       : "#dce3ea";
-    dom.kpiFinish.textContent = formatDate(finish);
+
+    dom.kpiFinish.textContent = formatDateWithYear(currentDate);
+
     dom.kpiDelay.textContent =
-      delay > 0 ? `+${delay} days` : "On time";
+      stageDelay > 0 ? `+${stageDelay} days` : "On time";
+
     dom.kpiDelay.className =
-      `kpi-value ${delay > 0 ? "delay-positive" : "delay-good"}`;
-    dom.kpiDelayFoot.textContent =
-      delay > 0 ? "Behind Original finish" : "Compared with Original";
+      `kpi-value ${stageDelay > 0 ? "delay-positive" : "delay-good"}`;
+
+    dom.kpiDelayFoot.textContent = current
+      ? `Target ${formatDateWithYear(targetDate)}`
+      : "Compared with Current Stage Target";
+
     dom.kpiProgress.textContent = `${progress}%`;
     dom.progressBar.style.width = `${progress}%`;
     dom.progressBar.style.background = current
@@ -914,7 +932,18 @@
     segmentStart,
     segmentFinish
   ) {
-    const delay = item.delay || 0;
+    const displayedDate = cloneDate(
+      item.actual ||
+      item.estimate ||
+      item.target ||
+      item.date
+    );
+
+    const stageDelay =
+      displayedDate && item.target
+        ? Math.max(0, diffDays(item.target, displayedDate))
+        : 0;
+
     const duration = Math.max(
       1,
       diffDays(segmentStart, segmentFinish)
@@ -923,12 +952,12 @@
     dom.tooltip.innerHTML = `
       <strong>${escapeHtml(partNo)} · ${escapeHtml(item.stage.name)}</strong>
       Row: ${type}<br>
-      Target: ${formatDate(item.target)}<br>
-      Estimate: ${formatDate(item.estimate)}<br>
-      Actual: ${formatDate(item.actual)}<br>
-      Milestone: ${formatDate(item.date)}<br>
+      Target: ${formatDateWithYear(item.target)}<br>
+      Estimate: ${formatDateWithYear(item.estimate)}<br>
+      Actual: ${formatDateWithYear(item.actual)}<br>
+      Displayed date: ${formatDateWithYear(displayedDate)}<br>
       Source: ${escapeHtml(item.source)}<br>
-      Delay: ${delay > 0 ? `+${delay} days` : "On time"}<br>
+      Stage delay: ${stageDelay > 0 ? `+${stageDelay} days` : "On time"}<br>
       Stage span: ${duration} day(s)
     `;
 
@@ -1121,6 +1150,18 @@
     return [
       String(date.getMonth() + 1).padStart(2, "0"),
       String(date.getDate()).padStart(2, "0"),
+    ].join("/");
+  }
+
+  function formatDateWithYear(date) {
+    if (!date) {
+      return "—";
+    }
+
+    return [
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+      String(date.getFullYear()).slice(-2),
     ].join("/");
   }
 

@@ -75,3 +75,14 @@ Then in GitHub Desktop:
 - There is no automatic delay push to later stages.
 - Each stage color fills from the previous milestone to the current stage milestone.
 - Therefore the POR-to-Tooling-Build 180-day interval is colored Tooling Build.
+
+
+## V9 — Correct Current Stage KPI
+
+- Current Stage = first stage with blank Actual.
+- If all stages have Actual, Current Stage = final stage.
+- Current Stage Date = Actual, otherwise Estimate, otherwise Target.
+- Current Stage Delay = Current Stage Date minus Current Stage Target.
+- Progress = stages with Actual divided by total stages.
+- Tooltip delay uses the same stage-level formula.
+- KPI dates display as `MM/DD/YY`.

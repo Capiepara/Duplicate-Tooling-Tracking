@@ -1,503 +1,1109 @@
-let workbook = null;
-let rawData = [];
-let ganttRows = [];
-let allWeeks = [];
+(() => {
+  "use strict";
 
-const WEEK_WIDTH = 44;
-const DAY_WIDTH = WEEK_WIDTH / 7;
+  const WEEK_WIDTH = 42;
+  const DAY_WIDTH = WEEK_WIDTH / 7;
+  const MS_DAY = 86400000;
+  const DEFAULT_REPORT_START = new Date(2026, 5, 1);
 
-const STAGES = [
-  { key: "2d", name: "2D/3D Drawing", color: "#900C3F", aliases: ["2d/3d drawing", "2d", "3d"] },
-  { key: "toolingSpec", name: "Tooling Spec Date", color: "#182B55", aliases: ["tooling spec date", "tooling spec"] },
-  { key: "quotation", name: "Quotation", color: "#4871CC", aliases: ["quotation"] },
-  { key: "car", name: "CAR", color: "#5F4E94", aliases: ["car"] },
-  { key: "por", name: "POR", color: "#A291C7", aliases: ["por"] },
-  { key: "toolingBuild", name: "Tooling Build", color: "#82CBEC", aliases: ["tooling build", "tooling buid"] },
-  { key: "fai", name: "FAI", color: "#D94F21", aliases: ["fai"] },
-  { key: "qbBuilding", name: "QB Building", color: "#FEBD2B", aliases: ["qb building"] },
-  { key: "qbTesting", name: "QB Testing Complete", color: "#9AAB4B", aliases: ["qb testing complete", "qb testing complete date"] },
-  { key: "pr", name: "PR Building", color: "#D6568C", aliases: ["pr building"] },
-  { key: "ser", name: "SER Fully Release", color: "#009999", aliases: ["ser fully release", "ser fully release date"] },
-];
+  const STAGES = [
+    {
+      key: "opm",
+      name: "OPM Kick Off",
+      color: "#12A0AA",
+      aliases: ["opm kick off", "opm kickoff", "opm"],
+    },
+    {
+      key: "drawing",
+      name: "2D/3D Drawing",
+      color: "#900C3F",
+      aliases: ["2d/3d drawing", "2d 3d drawing", "2d", "3d"],
+    },
+    {
+      key: "toolingSpec",
+      name: "Tooling Spec Date",
+      color: "#182B55",
+      aliases: ["tooling spec date", "tooling spec"],
+    },
+    {
+      key: "quotation",
+      name: "Quotation",
+      color: "#4871CC",
+      aliases: ["quotation"],
+    },
+    {
+      key: "car",
+      name: "CAR",
+      color: "#5F4E94",
+      aliases: ["car"],
+    },
+    {
+      key: "por",
+      name: "POR",
+      color: "#A291C7",
+      aliases: ["por"],
+    },
+    {
+      key: "toolingBuild",
+      name: "Tooling Build",
+      color: "#82CBEC",
+      aliases: ["tooling build", "tooling buid"],
+    },
+    {
+      key: "fai",
+      name: "FAI",
+      color: "#D94F21",
+      aliases: ["fai"],
+    },
+    {
+      key: "qbBuilding",
+      name: "QB Building",
+      color: "#FEBD2B",
+      aliases: ["qb building"],
+    },
+    {
+      key: "qbTesting",
+      name: "QB Testing Complete",
+      color: "#9AAB4B",
+      aliases: [
+        "qb testing complete date",
+        "qb testing complete",
+        "qb testing",
+      ],
+    },
+    {
+      key: "pr",
+      name: "PR Building",
+      color: "#D6568C",
+      aliases: ["pr building"],
+    },
+    {
+      key: "ser",
+      name: "SER Fully Release",
+      color: "#009999",
+      aliases: [
+        "ser fully release date",
+        "ser fully release",
+        "ser release",
+      ],
+    },
+  ];
 
-const excelFile = document.getElementById("excelFile");
-const fileName = document.getElementById("fileName");
-const sheetSelect = document.getElementById("sheetSelect");
-const loadSheetBtn = document.getElementById("loadSheetBtn");
-const ganttGrid = document.getElementById("ganttGrid");
-const summaryText = document.getElementById("summaryText");
-const partSearch = document.getElementById("partSearch");
-const stageFilter = document.getElementById("stageFilter");
-const resetBtn = document.getElementById("resetBtn");
-
-excelFile.addEventListener("change", handleFileImport);
-loadSheetBtn.addEventListener("click", loadSelectedSheet);
-partSearch.addEventListener("input", renderGantt);
-stageFilter.addEventListener("change", renderGantt);
-resetBtn.addEventListener("click", resetFilters);
-
-function handleFileImport(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  fileName.textContent = file.name;
-
-  const reader = new FileReader();
-
-  reader.onload = function (e) {
-    const data = new Uint8Array(e.target.result);
-
-    workbook = XLSX.read(data, {
-      type: "array",
-      cellDates: true,
-    });
-
-    sheetSelect.innerHTML = "";
-
-    workbook.SheetNames.forEach((sheet) => {
-      const option = document.createElement("option");
-      option.value = sheet;
-      option.textContent = sheet;
-      sheetSelect.appendChild(option);
-    });
-
-    sheetSelect.disabled = false;
-    loadSheetBtn.disabled = false;
+  const state = {
+    workbook: null,
+    rows: [],
+    parts: [],
+    weeks: [],
+    timelineStart: null,
+    timelineEnd: null,
   };
 
-  reader.readAsArrayBuffer(file);
-}
+  const dom = {
+    excelFile: get("excelFile"),
+    fileName: get("fileName"),
+    sheetSelect: get("sheetSelect"),
+    reportStart: get("reportStart"),
+    loadSheetBtn: get("loadSheetBtn"),
+    partFilter: get("partFilter"),
+    stageFilter: get("stageFilter"),
+    dateFrom: get("dateFrom"),
+    dateTo: get("dateTo"),
+    delayOnly: get("delayOnly"),
+    resetFiltersBtn: get("resetFiltersBtn"),
+    legend: get("legend"),
+    summaryText: get("summaryText"),
+    emptyState: get("emptyState"),
+    ganttViewport: get("ganttViewport"),
+    ganttCanvas: get("ganttCanvas"),
+    tooltip: get("tooltip"),
+    kpiPart: get("kpiPart"),
+    kpiStage: get("kpiStage"),
+    kpiStageStrip: get("kpiStageStrip"),
+    kpiFinish: get("kpiFinish"),
+    kpiDelay: get("kpiDelay"),
+    kpiDelayFoot: get("kpiDelayFoot"),
+    kpiProgress: get("kpiProgress"),
+    progressBar: get("progressBar"),
+  };
 
-function loadSelectedSheet() {
-  const sheetName = sheetSelect.value;
-  const ws = workbook.Sheets[sheetName];
+  init();
 
-  const range = XLSX.utils.decode_range(ws["!ref"]);
-  range.s.c = 0;
-  range.e.c = 35;
+  function init() {
+    renderLegend();
+    renderStageFilter();
 
-  rawData = XLSX.utils.sheet_to_json(ws, {
-    header: 1,
-    range: XLSX.utils.encode_range(range),
-    defval: "",
-    raw: false,
-  });
+    dom.excelFile.addEventListener("change", handleExcelImport);
+    dom.loadSheetBtn.addEventListener("click", loadSelectedSheet);
+    dom.reportStart.addEventListener("change", () => {
+      if (state.parts.length) {
+        rebuildTimeline();
+        render();
+      }
+    });
 
-  buildStageFilter();
-  parseGanttRows();
-  renderGantt();
-}
+    [
+      dom.partFilter,
+      dom.stageFilter,
+      dom.dateFrom,
+      dom.dateTo,
+      dom.delayOnly,
+    ].forEach((element) => {
+      element.addEventListener("change", render);
+    });
 
-function buildStageFilter() {
-  stageFilter.innerHTML = `<option value="ALL">All Stages</option>`;
-
-  STAGES.forEach((stage) => {
-    const option = document.createElement("option");
-    option.value = stage.key;
-    option.textContent = stage.name;
-    stageFilter.appendChild(option);
-  });
-  renderLegend();
-}
-
-function parseGanttRows() {
-  ganttRows = [];
-
-  const headerInfo = findHeaderRows();
-  if (!headerInfo) {
-    alert("Không tìm thấy header stage. Kiểm tra file Excel.");
-    return;
+    dom.resetFiltersBtn.addEventListener("click", resetFilters);
   }
 
-  const { stageRowIndex, subRowIndex } = headerInfo;
-  const stageMap = getStageColumnMap(stageRowIndex, subRowIndex);
+  function handleExcelImport(event) {
+    const file = event.target.files && event.target.files[0];
 
-  let currentPart = "";
+    if (!file) {
+      return;
+    }
 
-  for (let r = subRowIndex + 1; r < rawData.length; r++) {
-    const row = rawData[r];
+    dom.fileName.textContent = file.name;
 
-    const partNo = clean(row[0]) || currentPart;
-    const type = clean(row[1]);
+    const reader = new FileReader();
 
-    if (clean(row[0])) currentPart = clean(row[0]);
+    reader.onerror = () => {
+      alert("Cannot read this Excel file.");
+    };
 
-    if (!partNo) continue;
-    if (type !== "Original" && type !== "Actual") continue;
+    reader.onload = (loadEvent) => {
+      try {
+        const bytes = new Uint8Array(loadEvent.target.result);
 
-    const stages = [];
+        state.workbook = XLSX.read(bytes, {
+          type: "array",
+          cellDates: true,
+        });
 
-    STAGES.forEach((stage) => {
-      const cols = stageMap[stage.key];
-      if (!cols) return;
+        dom.sheetSelect.innerHTML = "";
 
-      const target = parseDate(row[cols.target]);
-      const estimate = parseDate(row[cols.estimate]);
-      const actual = parseDate(row[cols.actual]);
+        state.workbook.SheetNames.forEach((sheetName) => {
+          const option = document.createElement("option");
+          option.value = sheetName;
+          option.textContent = sheetName;
+          dom.sheetSelect.appendChild(option);
+        });
 
-      let start = target;
-      let end = actual || estimate || target;
+        dom.sheetSelect.disabled = false;
+        dom.loadSheetBtn.disabled = false;
+      } catch (error) {
+        console.error(error);
+        alert("The Excel file could not be parsed.");
+      }
+    };
 
-      if (!start || !end) return;
+    reader.readAsArrayBuffer(file);
+  }
 
-      if (end < start) {
-        const temp = start;
-        start = end;
-        end = temp;
+  function loadSelectedSheet() {
+    if (!state.workbook) {
+      return;
+    }
+
+    const sheetName = dom.sheetSelect.value;
+    const worksheet = state.workbook.Sheets[sheetName];
+
+    if (!worksheet || !worksheet["!ref"]) {
+      alert("The selected sheet is empty.");
+      return;
+    }
+
+    try {
+      const data = worksheetToMatrix(worksheet);
+      const header = locateHeaderRows(data);
+
+      if (!header) {
+        throw new Error(
+          "Cannot find the stage header and Target / Estimate / Actual row."
+        );
       }
 
-      stages.push({
-        key: stage.key,
-        name: stage.name,
-        color: stage.color,
-        start,
-        end,
-        target,
-        estimate,
+      const columnMap = buildColumnMap(
+        data[header.stageRowIndex],
+        data[header.subHeaderRowIndex]
+      );
+
+      const rawRows = parseDataRows(
+        data,
+        header.subHeaderRowIndex + 1,
+        columnMap
+      );
+
+      state.parts = buildPartSchedules(rawRows);
+      populatePartFilter();
+      rebuildTimeline();
+      render();
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Cannot build the Gantt chart.");
+    }
+  }
+
+  function worksheetToMatrix(worksheet) {
+    const sourceRange = XLSX.utils.decode_range(worksheet["!ref"]);
+
+    sourceRange.s.c = 0;
+    sourceRange.e.c = Math.min(35, sourceRange.e.c);
+
+    return XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      range: XLSX.utils.encode_range(sourceRange),
+      defval: "",
+      raw: true,
+    });
+  }
+
+  function locateHeaderRows(data) {
+    const maxRows = Math.min(data.length, 20);
+
+    for (let rowIndex = 0; rowIndex < maxRows - 1; rowIndex += 1) {
+      const stageText = data[rowIndex].map(normalize).join(" ");
+      const subHeaderText = data[rowIndex + 1].map(normalize).join(" ");
+
+      const stageMatches = STAGES.filter((stage) =>
+        stage.aliases.some((alias) => stageText.includes(alias))
+      ).length;
+
+      const hasSubHeaders =
+        subHeaderText.includes("target") &&
+        (subHeaderText.includes("actual") ||
+          subHeaderText.includes("estimate"));
+
+      if (stageMatches >= 3 && hasSubHeaders) {
+        return {
+          stageRowIndex: rowIndex,
+          subHeaderRowIndex: rowIndex + 1,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function buildColumnMap(stageRow, subHeaderRow) {
+    const map = {};
+    let activeStage = null;
+
+    for (let columnIndex = 0; columnIndex < stageRow.length; columnIndex += 1) {
+      const stageText = normalize(stageRow[columnIndex]);
+      const matchedStage = findStage(stageText);
+
+      if (matchedStage) {
+        activeStage = matchedStage;
+      }
+
+      if (!activeStage) {
+        continue;
+      }
+
+      const subHeader = normalize(subHeaderRow[columnIndex]);
+
+      if (!map[activeStage.key]) {
+        map[activeStage.key] = {
+          stage: activeStage,
+          target: null,
+          estimate: null,
+          actual: null,
+        };
+      }
+
+      if (subHeader.includes("target")) {
+        map[activeStage.key].target = columnIndex;
+      } else if (subHeader.includes("estimate")) {
+        map[activeStage.key].estimate = columnIndex;
+      } else if (subHeader.includes("actual")) {
+        map[activeStage.key].actual = columnIndex;
+      } else if (
+        activeStage.key === "opm" &&
+        map[activeStage.key].target === null
+      ) {
+        map[activeStage.key].target = columnIndex;
+      }
+    }
+
+    return map;
+  }
+
+  function parseDataRows(data, firstDataRow, columnMap) {
+    const parsed = [];
+    let currentPart = "";
+
+    for (let rowIndex = firstDataRow; rowIndex < data.length; rowIndex += 1) {
+      const row = data[rowIndex] || [];
+      const partValue = clean(row[0]);
+      const rowType = titleCase(clean(row[1]));
+
+      if (partValue) {
+        currentPart = partValue;
+      }
+
+      if (!currentPart || (rowType !== "Original" && rowType !== "Actual")) {
+        continue;
+      }
+
+      const milestones = STAGES.map((stage) => {
+        const columns = columnMap[stage.key];
+
+        if (!columns) {
+          return null;
+        }
+
+        return {
+          stage,
+          target: parseExcelDate(
+            columns.target === null ? null : row[columns.target]
+          ),
+          estimate: parseExcelDate(
+            columns.estimate === null ? null : row[columns.estimate]
+          ),
+          actual: parseExcelDate(
+            columns.actual === null ? null : row[columns.actual]
+          ),
+        };
+      }).filter(Boolean);
+
+      parsed.push({
+        partNo: currentPart,
+        type: rowType,
+        milestones,
+      });
+    }
+
+    if (!parsed.length) {
+      throw new Error(
+        "No Original / Actual rows were found. Check Part No. and Original/Actual columns."
+      );
+    }
+
+    return parsed;
+  }
+
+  function buildPartSchedules(rawRows) {
+    const grouped = new Map();
+
+    rawRows.forEach((row) => {
+      if (!grouped.has(row.partNo)) {
+        grouped.set(row.partNo, {
+          partNo: row.partNo,
+          originalRaw: null,
+          actualRaw: null,
+        });
+      }
+
+      const part = grouped.get(row.partNo);
+
+      if (row.type === "Original") {
+        part.originalRaw = row;
+      } else {
+        part.actualRaw = row;
+      }
+    });
+
+    const parts = [];
+
+    grouped.forEach((part) => {
+      const originalRaw = part.originalRaw || part.actualRaw;
+      const actualRaw = part.actualRaw || part.originalRaw;
+
+      const original = makeOriginalSchedule(originalRaw);
+      const actual = makeActualForecastSchedule(actualRaw, original);
+
+      parts.push({
+        partNo: part.partNo,
+        original,
         actual,
-        using: actual ? "Actual" : "Estimate",
       });
     });
 
-    ganttRows.push({
-      partNo,
-      type,
-      stages,
+    return parts;
+  }
+
+  function makeOriginalSchedule(row) {
+    const milestones = [];
+    let previousFinish = null;
+
+    row.milestones.forEach((item) => {
+      const finish = cloneDate(item.target || item.estimate || item.actual);
+
+      if (!finish) {
+        return;
+      }
+
+      const safeFinish =
+        previousFinish && finish < previousFinish
+          ? cloneDate(previousFinish)
+          : finish;
+
+      milestones.push({
+        stage: item.stage,
+        start: previousFinish ? cloneDate(previousFinish) : cloneDate(safeFinish),
+        finish: cloneDate(safeFinish),
+        target: cloneDate(item.target),
+        estimate: cloneDate(item.estimate),
+        actual: cloneDate(item.actual),
+        source: "Target",
+      });
+
+      previousFinish = cloneDate(safeFinish);
+    });
+
+    return milestones;
+  }
+
+  function makeActualForecastSchedule(row, originalSchedule) {
+    const originalByKey = new Map(
+      originalSchedule.map((item) => [item.stage.key, item])
+    );
+
+    const milestones = [];
+    let previousFinish = null;
+    let accumulatedDelay = 0;
+
+    row.milestones.forEach((item) => {
+      const original = originalByKey.get(item.stage.key);
+      const baselineFinish = original ? original.finish : item.target;
+
+      let source = "Target";
+      let candidate = null;
+
+      if (item.actual) {
+        candidate = cloneDate(item.actual);
+        source = "Actual";
+      } else if (item.estimate) {
+        candidate = addDays(item.estimate, accumulatedDelay);
+        source = accumulatedDelay > 0 ? "Forecast + Delay" : "Estimate";
+      } else if (item.target) {
+        candidate = addDays(item.target, accumulatedDelay);
+        source = accumulatedDelay > 0 ? "Target + Delay" : "Target";
+      }
+
+      if (!candidate) {
+        return;
+      }
+
+      if (previousFinish && candidate < previousFinish) {
+        candidate = cloneDate(previousFinish);
+      }
+
+      const delay =
+        baselineFinish && candidate
+          ? Math.max(0, diffDays(baselineFinish, candidate))
+          : 0;
+
+      accumulatedDelay = Math.max(accumulatedDelay, delay);
+
+      milestones.push({
+        stage: item.stage,
+        start: previousFinish ? cloneDate(previousFinish) : cloneDate(candidate),
+        finish: cloneDate(candidate),
+        target: cloneDate(item.target),
+        estimate: cloneDate(item.estimate),
+        actual: cloneDate(item.actual),
+        source,
+        delay,
+      });
+
+      previousFinish = cloneDate(candidate);
+    });
+
+    return milestones;
+  }
+
+  function rebuildTimeline() {
+    const requestedStart = parseHtmlDate(dom.reportStart.value);
+    const reportStart = getMonday(requestedStart || DEFAULT_REPORT_START);
+
+    let maxFinish = addDays(reportStart, 7 * 52);
+
+    state.parts.forEach((part) => {
+      [...part.original, ...part.actual].forEach((item) => {
+        if (item.finish && item.finish > maxFinish) {
+          maxFinish = item.finish;
+        }
+      });
+    });
+
+    state.timelineStart = reportStart;
+    state.timelineEnd = getMonday(addDays(maxFinish, 28));
+    state.weeks = [];
+
+    for (
+      let cursor = cloneDate(state.timelineStart);
+      cursor <= state.timelineEnd;
+      cursor = addDays(cursor, 7)
+    ) {
+      state.weeks.push(cursor);
+    }
+  }
+
+  function render() {
+    if (!state.parts.length || !state.weeks.length) {
+      return;
+    }
+
+    const filteredParts = getFilteredParts();
+
+    dom.emptyState.classList.add("hidden");
+    dom.ganttViewport.classList.remove("hidden");
+    dom.ganttCanvas.innerHTML = "";
+
+    renderHeader();
+
+    filteredParts.forEach((part) => {
+      renderScheduleRow(part.partNo, "Original", part.original);
+      renderScheduleRow(part.partNo, "Actual", part.actual);
+    });
+
+    renderTodayLine(filteredParts.length * 2);
+    updateDashboard(filteredParts);
+
+    dom.summaryText.textContent =
+      `${filteredParts.length} part(s) · ` +
+      `${filteredParts.length * 2} row(s) · ` +
+      `${formatDate(state.timelineStart)} to ${formatDate(state.timelineEnd)}`;
+  }
+
+  function getFilteredParts() {
+    const partValue = dom.partFilter.value;
+    const stageKey = dom.stageFilter.value;
+    const from = parseHtmlDate(dom.dateFrom.value);
+    const to = parseHtmlDate(dom.dateTo.value);
+    const delayOnly = dom.delayOnly.checked;
+
+    return state.parts.filter((part) => {
+      if (partValue !== "ALL" && part.partNo !== partValue) {
+        return false;
+      }
+
+      const actualSchedule = part.actual;
+
+      if (delayOnly && getPartDelay(part) <= 0) {
+        return false;
+      }
+
+      if (stageKey !== "ALL" || from || to) {
+        const relevant = actualSchedule.filter((item) => {
+          if (stageKey !== "ALL" && item.stage.key !== stageKey) {
+            return false;
+          }
+
+          if (from && item.finish < from) {
+            return false;
+          }
+
+          if (to && item.finish > to) {
+            return false;
+          }
+
+          return true;
+        });
+
+        if (!relevant.length) {
+          return false;
+        }
+      }
+
+      return true;
     });
   }
 
-  allWeeks = generateWeeks(ganttRows);
-}
+  function renderHeader() {
+    const totalWidth = state.weeks.length * WEEK_WIDTH;
+    const yearGroups = makeYearGroups(state.weeks);
 
-function findHeaderRows() {
-  for (let r = 0; r < Math.min(rawData.length, 12); r++) {
-    const rowText = rawData[r].map(clean).join(" ").toLowerCase();
+    const yearRow = document.createElement("div");
+    yearRow.className = "year-row";
 
-    const hasStage = STAGES.some((s) =>
-      s.aliases.some((a) => rowText.includes(a))
-    );
+    yearRow.innerHTML = `
+      <div class="year-left">Part No.</div>
+      <div class="year-type">Original / Actual</div>
+      <div class="year-timeline" style="width:${totalWidth}px">
+        ${yearGroups
+          .map(
+            (group) => `
+              <div
+                class="year-block"
+                style="width:${group.count * WEEK_WIDTH}px"
+              >
+                ${group.year}
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
 
-    const nextRow = rawData[r + 1] || [];
-    const nextText = nextRow.map(clean).join(" ").toLowerCase();
+    const weekRow = document.createElement("div");
+    weekRow.className = "week-row";
 
-    const hasSubHeader =
-      nextText.includes("target") ||
-      nextText.includes("estimate") ||
-      nextText.includes("actual");
+    weekRow.innerHTML = `
+      <div class="week-left"></div>
+      <div class="week-type"></div>
+      <div class="week-timeline" style="width:${totalWidth}px">
+        ${state.weeks
+          .map(
+            (week) => `
+              <div class="week-cell">
+                <strong>WK ${getIsoWeek(week)}</strong>
+                <span>${formatDate(week)}</span>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
 
-    if (hasStage && hasSubHeader) {
-      return {
-        stageRowIndex: r,
-        subRowIndex: r + 1,
-      };
-    }
+    dom.ganttCanvas.appendChild(yearRow);
+    dom.ganttCanvas.appendChild(weekRow);
   }
 
-  return null;
-}
+  function renderScheduleRow(partNo, type, schedule) {
+    const selectedStage = dom.stageFilter.value;
+    const row = document.createElement("div");
+    row.className = "gantt-row";
 
-function getStageColumnMap(stageRowIndex, subRowIndex) {
-  const map = {};
-  const stageRow = rawData[stageRowIndex];
-  const subRow = rawData[subRowIndex];
+    const partCell = document.createElement("div");
+    partCell.className = "part-cell";
+    partCell.textContent = type === "Original" ? partNo : "";
 
-  let currentStageKey = null;
+    const typeCell = document.createElement("div");
+    typeCell.className =
+      `type-cell ${type === "Original" ? "type-original" : "type-actual"}`;
+    typeCell.textContent = type;
 
-  for (let c = 0; c < stageRow.length; c++) {
-    const stageText = normalize(stageRow[c]);
+    const timeline = document.createElement("div");
+    timeline.className = "timeline-row";
+    timeline.style.width = `${state.weeks.length * WEEK_WIDTH}px`;
 
-    const matchedStage = STAGES.find((stage) =>
-      stage.aliases.some((alias) => stageText.includes(alias))
-    );
+    schedule.forEach((item) => {
+      if (selectedStage !== "ALL" && item.stage.key !== selectedStage) {
+        return;
+      }
 
-    if (matchedStage) {
-      currentStageKey = matchedStage.key;
-    }
+      const visibleStart =
+        item.start < state.timelineStart
+          ? state.timelineStart
+          : item.start;
 
-    if (!currentStageKey) continue;
+      const visibleFinish =
+        item.finish > state.timelineEnd
+          ? state.timelineEnd
+          : item.finish;
 
-    const sub = normalize(subRow[c]);
+      if (
+        visibleFinish < state.timelineStart ||
+        visibleStart > state.timelineEnd
+      ) {
+        return;
+      }
 
-    if (!map[currentStageKey]) {
-      map[currentStageKey] = {};
-    }
+      const segment = document.createElement("div");
+      segment.className = "stage-segment";
+      segment.style.background = item.stage.color;
+      segment.style.left = `${dateOffset(visibleStart)}px`;
+      segment.style.width = `${Math.max(
+        DAY_WIDTH,
+        (diffDays(visibleStart, visibleFinish) + 1) * DAY_WIDTH
+      )}px`;
 
-    if (sub.includes("target")) map[currentStageKey].target = c;
-    if (sub.includes("estimate")) map[currentStageKey].estimate = c;
-    if (sub.includes("actual")) map[currentStageKey].actual = c;
+      segment.addEventListener("mouseenter", (event) => {
+        showTooltip(event, partNo, type, item);
+      });
+
+      segment.addEventListener("mousemove", moveTooltip);
+      segment.addEventListener("mouseleave", hideTooltip);
+
+      timeline.appendChild(segment);
+    });
+
+    row.appendChild(partCell);
+    row.appendChild(typeCell);
+    row.appendChild(timeline);
+
+    dom.ganttCanvas.appendChild(row);
   }
 
-  return map;
-}
+  function renderTodayLine(rowCount) {
+    const today = stripTime(new Date());
 
-function renderGantt() {
-  ganttGrid.innerHTML = "";
+    if (today < state.timelineStart || today > state.timelineEnd) {
+      return;
+    }
 
-  const search = partSearch.value.trim().toLowerCase();
-  const selectedStage = stageFilter.value;
+    const line = document.createElement("div");
+    line.className = "today-line";
+    line.style.left =
+      `${82 + 94 + dateOffset(today)}px`;
+    line.style.top = "28px";
+    line.style.height = `${48 + rowCount * 30}px`;
 
-  const filteredRows = ganttRows.filter((row) => {
-    return String(row.partNo).toLowerCase().includes(search);
-  });
+    dom.ganttCanvas.appendChild(line);
+  }
 
-  renderHeader();
+  function updateDashboard(filteredParts) {
+    const selectedPart =
+      dom.partFilter.value !== "ALL"
+        ? filteredParts.find((part) => part.partNo === dom.partFilter.value)
+        : filteredParts.length === 1
+          ? filteredParts[0]
+          : null;
 
-  filteredRows.forEach((row) => {
-    renderRow(row, selectedStage);
-  });
+    if (!selectedPart) {
+      dom.kpiPart.textContent =
+        dom.partFilter.value === "ALL" ? "All" : dom.partFilter.value;
+      dom.kpiStage.textContent = filteredParts.length ? "Multiple" : "—";
+      dom.kpiStageStrip.style.background = "#dce3ea";
+      dom.kpiFinish.textContent = "—";
+      dom.kpiDelay.textContent = "—";
+      dom.kpiDelay.className = "kpi-value";
+      dom.kpiProgress.textContent = "0%";
+      dom.progressBar.style.width = "0%";
+      return;
+    }
 
-  summaryText.textContent = `${filteredRows.length} rows`;
-  updateKPI(filteredRows);
-}
+    const today = stripTime(new Date());
+    const schedule = selectedPart.actual;
+    const current =
+      schedule.find(
+        (item) => today >= item.start && today <= item.finish
+      ) ||
+      schedule.find((item) => today < item.finish) ||
+      schedule[schedule.length - 1];
 
-function renderHeader() {
-  const header = document.createElement("div");
-  header.className = "gantt-header";
+    const actualCompleted = schedule.filter(
+      (item) => item.actual && item.actual <= today
+    ).length;
 
-  const timelineWidth = allWeeks.length * WEEK_WIDTH;
+    const progress = Math.round(
+      (actualCompleted / Math.max(1, schedule.length)) * 100
+    );
 
-  header.innerHTML = `
-    <div class="left-head">Part No.</div>
-    <div class="left-head">Original<br>/ Actual</div>
-    <div class="timeline-head" style="width:${timelineWidth}px">
-      ${allWeeks.map((w) => `
-        <div class="week-cell">
-          <div>WK ${getWeekNumber(w)}</div>
-          <small>${formatDate(w)}</small>
+    const delay = getPartDelay(selectedPart);
+    const finish = schedule.length
+      ? schedule[schedule.length - 1].finish
+      : null;
+
+    dom.kpiPart.textContent = selectedPart.partNo;
+    dom.kpiStage.textContent = current ? current.stage.name : "—";
+    dom.kpiStageStrip.style.background = current
+      ? current.stage.color
+      : "#dce3ea";
+    dom.kpiFinish.textContent = formatDate(finish);
+    dom.kpiDelay.textContent =
+      delay > 0 ? `+${delay} days` : "On time";
+    dom.kpiDelay.className =
+      `kpi-value ${delay > 0 ? "delay-positive" : "delay-good"}`;
+    dom.kpiDelayFoot.textContent =
+      delay > 0 ? "Behind Original finish" : "Compared with Original";
+    dom.kpiProgress.textContent = `${progress}%`;
+    dom.progressBar.style.width = `${progress}%`;
+    dom.progressBar.style.background = current
+      ? current.stage.color
+      : "#009999";
+  }
+
+  function getPartDelay(part) {
+    const originalFinish = part.original.length
+      ? part.original[part.original.length - 1].finish
+      : null;
+
+    const actualFinish = part.actual.length
+      ? part.actual[part.actual.length - 1].finish
+      : null;
+
+    if (!originalFinish || !actualFinish) {
+      return 0;
+    }
+
+    return Math.max(0, diffDays(originalFinish, actualFinish));
+  }
+
+  function populatePartFilter() {
+    dom.partFilter.innerHTML =
+      `<option value="ALL">All Parts</option>` +
+      state.parts
+        .map(
+          (part) =>
+            `<option value="${escapeHtml(part.partNo)}">${escapeHtml(
+              part.partNo
+            )}</option>`
+        )
+        .join("");
+
+    dom.partFilter.disabled = false;
+  }
+
+  function renderStageFilter() {
+    dom.stageFilter.innerHTML =
+      `<option value="ALL">All Stages</option>` +
+      STAGES.map(
+        (stage) =>
+          `<option value="${stage.key}">${stage.name}</option>`
+      ).join("");
+  }
+
+  function renderLegend() {
+    dom.legend.innerHTML = STAGES.map(
+      (stage) => `
+        <div class="legend-item">
+          <span
+            class="legend-swatch"
+            style="background:${stage.color}"
+          ></span>
+          <span>${stage.name}</span>
         </div>
-      `).join("")}
-    </div>
-  `;
-
-  ganttGrid.appendChild(header);
-}
-
-function renderRow(row, selectedStage) {
-  const rowDiv = document.createElement("div");
-  rowDiv.className = "gantt-row";
-
-  const partCell = document.createElement("div");
-  partCell.className = "part-cell";
-  partCell.textContent = row.type === "Original" ? row.partNo : "";
-
-  const typeCell = document.createElement("div");
-  typeCell.className = `type-cell ${row.type === "Original" ? "type-original" : "type-actual"}`;
-  typeCell.textContent = row.type;
-
-  const timeline = document.createElement("div");
-  timeline.className = "timeline-cell";
-  timeline.style.width = `${allWeeks.length * WEEK_WIDTH}px`;
-
-  row.stages
-    .filter((stage) => selectedStage === "ALL" || stage.key === selectedStage)
-    .forEach((stage) => {
-      const bar = document.createElement("div");
-      bar.className = "stage-bar";
-      bar.style.background = stage.color;
-
-      const left = getDateOffset(stage.start);
-      const width = Math.max(getDateDiff(stage.start, stage.end) * DAY_WIDTH, 8);
-
-      bar.style.left = `${left}px`;
-      bar.style.width = `${width}px`;
-
-      bar.dataset.tip =
-        `${stage.name}\n` +
-        `Target: ${formatDate(stage.target)}\n` +
-        `Estimate: ${formatDate(stage.estimate)}\n` +
-        `Actual: ${formatDate(stage.actual)}\n` +
-        `Using: ${stage.using}`;
-
-      timeline.appendChild(bar);
-    });
-
-  rowDiv.appendChild(partCell);
-  rowDiv.appendChild(typeCell);
-  rowDiv.appendChild(timeline);
-
-  ganttGrid.appendChild(rowDiv);
-}
-
-function generateWeeks(rows) {
-  let minDate = null;
-  let maxDate = null;
-
-  rows.forEach((row) => {
-    row.stages.forEach((stage) => {
-      if (!minDate || stage.start < minDate) minDate = stage.start;
-      if (!maxDate || stage.end > maxDate) maxDate = stage.end;
-    });
-  });
-
-  if (!minDate || !maxDate) return [];
-
-  const start = getMonday(minDate);
-  const end = getMonday(maxDate);
-
-  const weeks = [];
-  let cur = new Date(start);
-
-  while (cur <= end) {
-    weeks.push(new Date(cur));
-    cur.setDate(cur.getDate() + 7);
+      `
+    ).join("");
   }
 
-  return weeks;
-}
+  function resetFilters() {
+    dom.partFilter.value = "ALL";
+    dom.stageFilter.value = "ALL";
+    dom.dateFrom.value = "";
+    dom.dateTo.value = "";
+    dom.delayOnly.checked = false;
+    render();
+  }
 
-function getDateOffset(date) {
-  if (!allWeeks.length || !date) return 0;
+  function showTooltip(event, partNo, type, item) {
+    const delay = item.delay || 0;
 
-  const start = allWeeks[0];
-  const diffDays = getDateDiff(start, date) - 1;
+    dom.tooltip.innerHTML = `
+      <strong>${escapeHtml(partNo)} · ${escapeHtml(item.stage.name)}</strong>
+      Row: ${type}<br>
+      Target: ${formatDate(item.target)}<br>
+      Estimate: ${formatDate(item.estimate)}<br>
+      Actual: ${formatDate(item.actual)}<br>
+      Displayed finish: ${formatDate(item.finish)}<br>
+      Source: ${escapeHtml(item.source)}<br>
+      Delay: ${delay > 0 ? `+${delay} days` : "On time"}
+    `;
 
-  return diffDays * DAY_WIDTH;
-}
+    dom.tooltip.classList.remove("hidden");
+    moveTooltip(event);
+  }
 
-function getDateDiff(start, end) {
-  const s = new Date(start);
-  const e = new Date(end);
+  function moveTooltip(event) {
+    const gap = 14;
+    const tooltipRect = dom.tooltip.getBoundingClientRect();
 
-  s.setHours(0, 0, 0, 0);
-  e.setHours(0, 0, 0, 0);
+    let left = event.clientX + gap;
+    let top = event.clientY + gap;
 
-  return Math.round((e - s) / 86400000) + 1;
-}
-
-function getMonday(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-
-  return d;
-}
-
-function getWeekNumber(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-
-  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-}
-
-function parseDate(value) {
-  if (!value) return null;
-
-  if (value instanceof Date && !isNaN(value)) return value;
-
-  const text = String(value).trim();
-  if (!text) return null;
-
-  const parts = text.split(/[\/\-]/);
-
-  if (parts.length >= 2) {
-    const month = Number(parts[0]);
-    const day = Number(parts[1]);
-    const year = parts[2] ? Number(parts[2]) : 2026;
-
-    if (!isNaN(month) && !isNaN(day)) {
-      return new Date(year, month - 1, day);
+    if (left + tooltipRect.width > window.innerWidth - 8) {
+      left = event.clientX - tooltipRect.width - gap;
     }
+
+    if (top + tooltipRect.height > window.innerHeight - 8) {
+      top = event.clientY - tooltipRect.height - gap;
+    }
+
+    dom.tooltip.style.left = `${left}px`;
+    dom.tooltip.style.top = `${top}px`;
   }
 
-  const parsed = new Date(text);
-  if (!isNaN(parsed)) return parsed;
-
-  return null;
-}
-
-function formatDate(date) {
-  if (!date) return "";
-
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-
-  return `${mm}/${dd}`;
-}
-
-function normalize(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-function clean(value) {
-  return String(value || "").trim();
-}
-
-function resetFilters() {
-  partSearch.value = "";
-  stageFilter.value = "ALL";
-  renderGantt();
-}
-function renderLegend() {
-  const legendPanel = document.getElementById("legendPanel");
-  if (!legendPanel) return;
-
-  legendPanel.innerHTML = STAGES.map(stage => `
-    <div class="legend-item">
-      <span class="legend-color" style="background:${stage.color}"></span>
-      <span>${stage.name}</span>
-    </div>
-  `).join("");
-}
-
-function updateKPI(filteredRows) {
-  const kpiPart = document.getElementById("kpiPart");
-  const kpiStage = document.getElementById("kpiStage");
-  const kpiDate = document.getElementById("kpiDate");
-  const kpiDelay = document.getElementById("kpiDelay");
-  const kpiStageColor = document.getElementById("kpiStageColor");
-
-  if (!filteredRows.length) {
-    kpiPart.textContent = "-";
-    kpiStage.textContent = "-";
-    kpiDate.textContent = "-";
-    kpiDelay.textContent = "-";
-    kpiStageColor.style.background = "#d1d5db";
-    return;
+  function hideTooltip() {
+    dom.tooltip.classList.add("hidden");
   }
 
-  const search = partSearch.value.trim();
+  function makeYearGroups(weeks) {
+    const groups = [];
 
-  if (!search) {
-    kpiPart.textContent = "All";
-    kpiStage.textContent = "Multiple";
-    kpiDate.textContent = "-";
-    kpiDelay.textContent = "-";
-    kpiStageColor.style.background = "#d1d5db";
-    return;
+    weeks.forEach((week) => {
+      const year = week.getFullYear();
+      const last = groups[groups.length - 1];
+
+      if (last && last.year === year) {
+        last.count += 1;
+      } else {
+        groups.push({ year, count: 1 });
+      }
+    });
+
+    return groups;
   }
 
-  const actualRow = filteredRows.find(r => r.type === "Actual") || filteredRows[0];
+  function findStage(value) {
+    if (!value) {
+      return null;
+    }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  let currentStage =
-    actualRow.stages.find(s => today >= s.start && today <= s.end) ||
-    actualRow.stages.find(s => today < s.start) ||
-    actualRow.stages[actualRow.stages.length - 1];
-
-  if (!currentStage) return;
-
-  let delayText = "-";
-
-  if (currentStage.actual && currentStage.estimate) {
-    const delayDays = getDateDiff(currentStage.estimate, currentStage.actual) - 1;
-    delayText = delayDays > 0 ? `+${delayDays} days` : "On time";
+    return STAGES.find((stage) =>
+      stage.aliases.some(
+        (alias) =>
+          value === alias ||
+          value.includes(alias)
+      )
+    ) || null;
   }
 
-  kpiPart.textContent = actualRow.partNo;
-  kpiStage.textContent = currentStage.name;
-  kpiDate.textContent = formatDate(currentStage.actual || currentStage.estimate || currentStage.end);
-  kpiDelay.textContent = delayText;
-  kpiStageColor.style.background = currentStage.color;
-}
+  function parseExcelDate(value) {
+    if (value === null || value === undefined || value === "") {
+      return null;
+    }
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return stripTime(value);
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const parsed = XLSX.SSF.parse_date_code(value);
+
+      if (parsed) {
+        return new Date(parsed.y, parsed.m - 1, parsed.d);
+      }
+    }
+
+    const text = clean(value);
+
+    if (!text) {
+      return null;
+    }
+
+    const match = text.match(
+      /^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?$/
+    );
+
+    if (match) {
+      const month = Number(match[1]);
+      const day = Number(match[2]);
+      let year = match[3] ? Number(match[3]) : 2026;
+
+      if (year < 100) {
+        year += 2000;
+      }
+
+      const date = new Date(year, month - 1, day);
+
+      return Number.isNaN(date.getTime()) ? null : stripTime(date);
+    }
+
+    const fallback = new Date(text);
+
+    return Number.isNaN(fallback.getTime())
+      ? null
+      : stripTime(fallback);
+  }
+
+  function parseHtmlDate(value) {
+    if (!value) {
+      return null;
+    }
+
+    const parts = value.split("-").map(Number);
+
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+
+  function getMonday(date) {
+    const result = stripTime(date);
+    const day = result.getDay();
+    const offset = day === 0 ? -6 : 1 - day;
+
+    result.setDate(result.getDate() + offset);
+    return result;
+  }
+
+  function getIsoWeek(date) {
+    const copy = new Date(
+      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+    );
+
+    const day = copy.getUTCDay() || 7;
+    copy.setUTCDate(copy.getUTCDate() + 4 - day);
+
+    const yearStart = new Date(Date.UTC(copy.getUTCFullYear(), 0, 1));
+
+    return Math.ceil(
+      (((copy - yearStart) / MS_DAY) + 1) / 7
+    );
+  }
+
+  function dateOffset(date) {
+    return diffDays(state.timelineStart, date) * DAY_WIDTH;
+  }
+
+  function diffDays(start, end) {
+    return Math.round(
+      (stripTime(end) - stripTime(start)) / MS_DAY
+    );
+  }
+
+  function addDays(date, days) {
+    const result = cloneDate(date);
+    result.setDate(result.getDate() + days);
+    return result;
+  }
+
+  function stripTime(date) {
+    const result = cloneDate(date);
+    result.setHours(0, 0, 0, 0);
+    return result;
+  }
+
+  function cloneDate(date) {
+    return date ? new Date(date.getTime()) : null;
+  }
+
+  function formatDate(date) {
+    if (!date) {
+      return "—";
+    }
+
+    return [
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("/");
+  }
+
+  function normalize(value) {
+    return clean(value)
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/\s+/g, " ");
+  }
+
+  function clean(value) {
+    return String(value ?? "").trim();
+  }
+
+  function titleCase(value) {
+    const normalized = value.toLowerCase();
+
+    if (normalized === "original") {
+      return "Original";
+    }
+
+    if (normalized === "actual") {
+      return "Actual";
+    }
+
+    return value;
+  }
+
+  function escapeHtml(value) {
+    return clean(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function get(id) {
+    const element = document.getElementById(id);
+
+    if (!element) {
+      throw new Error(`Missing element #${id}`);
+    }
+
+    return element;
+  }
+})();

@@ -3,84 +3,141 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Excel-based development tracking Gantt chart" />
   <title>Development Tracking Gantt</title>
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+  <link rel="stylesheet" href="./style.css?v=7.0.0" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 
 <body>
-  <div class="app">
+  <main class="app-shell">
     <header class="topbar">
       <div>
-        <h1>Development Tracking Gantt</h1>
-        <p>Import Excel and render Gantt chart</p>
+        <h1>Development Tracking Gantt <span class="version">V7</span></h1>
+        <p>Import Excel, select a sheet, and compare Original vs Actual timeline.</p>
       </div>
 
-      <label class="import-btn">
+      <label class="primary-button file-button">
         Import Excel
-        <input type="file" id="excelFile" accept=".xlsx,.xls,.xlsm" hidden />
+        <input id="excelFile" type="file" accept=".xlsx,.xls,.xlsm" hidden />
       </label>
     </header>
 
-    <section class="control-panel">
-      <div class="control-item">
+    <section class="panel import-panel">
+      <div class="field wide">
         <label>Selected File</label>
-        <div id="fileName" class="input-box">No file selected</div>
+        <div id="fileName" class="input-like">No file selected</div>
       </div>
 
-      <div class="control-item">
-        <label>Sheet</label>
+      <div class="field">
+        <label for="sheetSelect">Sheet</label>
         <select id="sheetSelect" disabled>
-          <option>Please import Excel first</option>
+          <option value="">Import Excel first</option>
         </select>
       </div>
 
-      <button id="loadSheetBtn" disabled>Load Sheet</button>
-    </section>
-
-    <section class="filter-panel">
-      <input id="partSearch" placeholder="Search Part No..." />
-      <select id="stageFilter">
-        <option value="ALL">All Stages</option>
-      </select>
-      <button id="resetBtn">Reset</button>
-    </section>
-    <section class="kpi-panel">
-  <div class="kpi-card">
-    <div class="kpi-title">Selected Part</div>
-    <div id="kpiPart" class="kpi-value">All</div>
-  </div>
-
-  <div class="kpi-card">
-    <div class="kpi-title">Current Stage</div>
-    <div id="kpiStage" class="kpi-value">-</div>
-    <div id="kpiStageColor" class="kpi-line"></div>
-  </div>
-
-  <div class="kpi-card">
-    <div class="kpi-title">Stage Date</div>
-    <div id="kpiDate" class="kpi-value">-</div>
-  </div>
-
-  <div class="kpi-card">
-    <div class="kpi-title">Delay</div>
-    <div id="kpiDelay" class="kpi-value">-</div>
-  </div>
-</section>
-
-<section class="legend-panel" id="legendPanel"></section>
-    <section class="gantt-card">
-      <div class="gantt-title">
-        <h2>Gantt Chart</h2>
-        <span id="summaryText">No data</span>
+      <div class="field small">
+        <label for="reportStart">Report Start</label>
+        <input id="reportStart" type="date" value="2026-06-01" />
       </div>
 
-      <div class="gantt-wrapper">
-        <div id="ganttGrid" class="gantt-grid"></div>
+      <button id="loadSheetBtn" class="secondary-button" disabled>Load Sheet</button>
+    </section>
+
+    <section class="panel filter-panel">
+      <div class="field">
+        <label for="partFilter">Part</label>
+        <select id="partFilter" disabled>
+          <option value="ALL">All Parts</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="stageFilter">Stage</label>
+        <select id="stageFilter">
+          <option value="ALL">All Stages</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="dateFrom">Stage Date From</label>
+        <input id="dateFrom" type="date" />
+      </div>
+
+      <div class="field">
+        <label for="dateTo">Stage Date To</label>
+        <input id="dateTo" type="date" />
+      </div>
+
+      <label class="check-field">
+        <input id="delayOnly" type="checkbox" />
+        Delay only
+      </label>
+
+      <button id="resetFiltersBtn" class="ghost-button">Reset</button>
+    </section>
+
+    <section class="kpi-grid">
+      <article class="kpi-card" id="partCard">
+        <div class="kpi-label">Selected Part</div>
+        <div id="kpiPart" class="kpi-value">All</div>
+        <div class="kpi-foot">Current filter</div>
+      </article>
+
+      <article class="kpi-card" id="stageCard">
+        <div class="kpi-label">Current Stage</div>
+        <div id="kpiStage" class="kpi-value">—</div>
+        <div id="kpiStageStrip" class="kpi-strip"></div>
+      </article>
+
+      <article class="kpi-card">
+        <div class="kpi-label">Current / Forecast Date</div>
+        <div id="kpiFinish" class="kpi-value">—</div>
+        <div class="kpi-foot">Actual first, otherwise forecast</div>
+      </article>
+
+      <article class="kpi-card">
+        <div class="kpi-label">Delay</div>
+        <div id="kpiDelay" class="kpi-value">—</div>
+        <div id="kpiDelayFoot" class="kpi-foot">Compared with Original</div>
+      </article>
+
+      <article class="kpi-card">
+        <div class="kpi-label">Progress</div>
+        <div id="kpiProgress" class="kpi-value">0%</div>
+        <div class="progress-track">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel legend-panel">
+      <div class="legend-title">Stage colors</div>
+      <div id="legend" class="legend-list"></div>
+    </section>
+
+    <section class="panel gantt-panel">
+      <div class="section-head">
+        <div>
+          <h2>Gantt Chart</h2>
+          <p id="summaryText">No data loaded</p>
+        </div>
+        <div class="hint">Original = Target baseline · Actual = Actual date, otherwise forecast</div>
+      </div>
+
+      <div id="emptyState" class="empty-state">
+        Import Excel and click <strong>Load Sheet</strong>.
+      </div>
+
+      <div id="ganttViewport" class="gantt-viewport hidden">
+        <div id="ganttCanvas" class="gantt-canvas"></div>
       </div>
     </section>
-  </div>
+  </main>
 
-  <script src="app.js"></script>
+  <div id="tooltip" class="tooltip hidden"></div>
+
+  <script src="./app.js?v=7.0.0"></script>
 </body>
 </html>

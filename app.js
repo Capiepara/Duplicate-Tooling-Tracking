@@ -460,59 +460,53 @@
 
     const milestones = [];
     let previousDate = null;
-    let carryDelay = 0;
 
     row.milestones.forEach((item) => {
       const original = originalByKey.get(item.stage.key);
       const baselineDate = original ? original.date : item.target;
 
-      let source = "Target";
-      let candidate = null;
-
-      if (item.actual) {
-        candidate = cloneDate(item.actual);
-        source = "Actual";
-      } else if (item.estimate) {
-        candidate = addDays(item.estimate, carryDelay);
-        source = carryDelay > 0 ? "Forecast + Delay" : "Estimate";
-      } else if (item.target) {
-        candidate = addDays(item.target, carryDelay);
-        source = carryDelay > 0 ? "Target + Delay" : "Target";
-      }
+      /*
+       * Required business rule:
+       * 1. Use Actual when Actual exists.
+       * 2. If Actual is blank, use Estimate.
+       * 3. If both are blank, fall back to Target.
+       * Do not push later stages automatically.
+       */
+      const candidate = cloneDate(
+        item.actual || item.estimate || item.target
+      );
 
       if (!candidate) {
         return;
       }
 
-      if (previousDate && candidate < previousDate) {
-        candidate = cloneDate(previousDate);
-      }
+      const safeDate =
+        previousDate && candidate < previousDate
+          ? cloneDate(previousDate)
+          : candidate;
 
-      const stageDelay =
-        baselineDate && candidate
-          ? Math.max(0, diffDays(baselineDate, candidate))
+      const source = item.actual
+        ? "Actual"
+        : item.estimate
+          ? "Estimate"
+          : "Target";
+
+      const delay =
+        baselineDate && safeDate
+          ? Math.max(0, diffDays(baselineDate, safeDate))
           : 0;
-
-      /*
-       * Completed stages use their real Actual date.
-       * The largest known delay is then carried into later stages that
-       * do not yet have Actual dates.
-       */
-      if (item.actual) {
-        carryDelay = Math.max(carryDelay, stageDelay);
-      }
 
       milestones.push({
         stage: item.stage,
-        date: cloneDate(candidate),
+        date: cloneDate(safeDate),
         target: cloneDate(item.target),
         estimate: cloneDate(item.estimate),
         actual: cloneDate(item.actual),
         source,
-        delay: stageDelay,
+        delay,
       });
 
-      previousDate = cloneDate(candidate);
+      previousDate = cloneDate(safeDate);
     });
 
     return milestones;
@@ -690,15 +684,19 @@
       }
 
       /*
-       * Each stage occupies the interval from its milestone date
-       * to the next stage milestone. The final SER stage is shown
-       * for one week only.
+       * A stage owns the time BEFORE its milestone:
+       * previous milestone -> current milestone.
+       *
+       * Example:
+       * POR = 07/01
+       * Tooling Build = 12/28
+       * The 180-day interval is colored Tooling Build, not POR.
        */
-      const segmentStart = item.date;
-      const nextItem = schedule[index + 1];
-      const segmentFinish = nextItem
-        ? nextItem.date
-        : addDays(item.date, 7);
+      const previousItem = schedule[index - 1];
+      const segmentStart = previousItem
+        ? previousItem.date
+        : state.timelineStart;
+      const segmentFinish = item.date;
 
       if (!segmentStart || !segmentFinish) {
         return;

@@ -66,3 +66,12 @@ Then in GitHub Desktop:
 - Forecast delay is carried only into stages without Actual dates.
 - The timeline stops one week after the last milestone.
 - Excel dates must be real dates displayed as `MM/DD/YY`.
+
+
+## V8.1 — Correct stage ownership
+
+- Actual row uses Actual when available.
+- If Actual is blank, the row uses Estimate.
+- There is no automatic delay push to later stages.
+- Each stage color fills from the previous milestone to the current stage milestone.
+- Therefore the POR-to-Tooling-Build 180-day interval is colored Tooling Build.

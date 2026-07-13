@@ -175,7 +175,7 @@
 
         state.workbook = XLSX.read(bytes, {
           type: "array",
-          cellDates: true,
+          cellDates: false,
         });
 
         dom.sheetSelect.innerHTML = "";
@@ -426,24 +426,36 @@
     let previousDate = null;
 
     row.milestones.forEach((item) => {
-      const date = cloneDate(item.target || item.estimate || item.actual);
+      /*
+       * Original timeline baseline:
+       * use the Actual column from the Original row.
+       * Fallback to Estimate, then Target when needed.
+       */
+      const baselineDate = cloneDate(
+        item.actual || item.estimate || item.target
+      );
 
-      if (!date) {
+      if (!baselineDate) {
         return;
       }
 
       const safeDate =
-        previousDate && date < previousDate
+        previousDate && baselineDate < previousDate
           ? cloneDate(previousDate)
-          : date;
+          : baselineDate;
 
       milestones.push({
         stage: item.stage,
         date: cloneDate(safeDate),
+        baselineDate: cloneDate(safeDate),
         target: cloneDate(item.target),
         estimate: cloneDate(item.estimate),
         actual: cloneDate(item.actual),
-        source: "Target",
+        source: item.actual
+          ? "Original Actual"
+          : item.estimate
+            ? "Original Estimate"
+            : "Original Target",
         delay: 0,
       });
 
@@ -463,27 +475,28 @@
 
     row.milestones.forEach((item) => {
       const original = originalByKey.get(item.stage.key);
-      const baselineDate = original ? original.date : item.target;
+      const baselineDate = original
+        ? cloneDate(original.baselineDate || original.date)
+        : null;
 
       /*
-       * Required business rule:
-       * 1. Use Actual when Actual exists.
-       * 2. If Actual is blank, use Estimate.
-       * 3. If both are blank, fall back to Target.
-       * Do not push later stages automatically.
+       * Actual timeline rule:
+       * - Use Actual from the Actual row when filled.
+       * - If Actual is blank, use Estimate from the Actual row.
+       * - Target is only the final fallback.
        */
-      const candidate = cloneDate(
+      const displayedDate = cloneDate(
         item.actual || item.estimate || item.target
       );
 
-      if (!candidate) {
+      if (!displayedDate) {
         return;
       }
 
       const safeDate =
-        previousDate && candidate < previousDate
+        previousDate && displayedDate < previousDate
           ? cloneDate(previousDate)
-          : candidate;
+          : displayedDate;
 
       const source = item.actual
         ? "Actual"
@@ -493,12 +506,13 @@
 
       const delay =
         baselineDate && safeDate
-          ? Math.max(0, diffDays(baselineDate, safeDate))
+          ? diffDays(baselineDate, safeDate)
           : 0;
 
       milestones.push({
         stage: item.stage,
         date: cloneDate(safeDate),
+        baselineDate,
         target: cloneDate(item.target),
         estimate: cloneDate(item.estimate),
         actual: cloneDate(item.actual),
@@ -791,27 +805,28 @@
       dom.kpiFinish.textContent = "—";
       dom.kpiDelay.textContent = "—";
       dom.kpiDelay.className = "kpi-value";
-      dom.kpiDelayFoot.textContent = "Compared with Current Stage Target";
+      dom.kpiDelayFoot.textContent = "Compared with Original baseline";
       dom.kpiProgress.textContent = "0%";
       dom.progressBar.style.width = "0%";
       return;
     }
 
     const schedule = selectedPart.actual;
+    const today = stripTime(new Date());
 
     /*
-     * Current Stage:
-     * - First stage with blank Actual.
-     * - If every stage has Actual, use the final stage.
+     * Current stage follows the calendar timeline:
+     * choose the first displayed milestone on or after today.
+     * If all milestones are in the past, use the final stage.
      */
-    let current = schedule.find((item) => !item.actual);
+    let current = schedule.find((item) => item.date >= today);
 
     if (!current && schedule.length) {
       current = schedule[schedule.length - 1];
     }
 
     const completedStages = schedule.filter(
-      (item) => Boolean(item.actual)
+      (item) => item.date < today
     ).length;
 
     const progress = Math.round(
@@ -819,21 +834,16 @@
     );
 
     const currentDate = current
-      ? cloneDate(
-          current.actual ||
-          current.estimate ||
-          current.target ||
-          current.date
-        )
+      ? cloneDate(current.date)
       : null;
 
-    const targetDate = current
-      ? cloneDate(current.target)
+    const baselineDate = current
+      ? cloneDate(current.baselineDate)
       : null;
 
-    const stageDelay =
-      currentDate && targetDate
-        ? Math.max(0, diffDays(targetDate, currentDate))
+    const stageVariance =
+      currentDate && baselineDate
+        ? diffDays(baselineDate, currentDate)
         : 0;
 
     dom.kpiPart.textContent = selectedPart.partNo;
@@ -844,15 +854,20 @@
 
     dom.kpiFinish.textContent = formatDateWithYear(currentDate);
 
-    dom.kpiDelay.textContent =
-      stageDelay > 0 ? `+${stageDelay} days` : "On time";
-
-    dom.kpiDelay.className =
-      `kpi-value ${stageDelay > 0 ? "delay-positive" : "delay-good"}`;
+    if (stageVariance > 0) {
+      dom.kpiDelay.textContent = `+${stageVariance} days`;
+      dom.kpiDelay.className = "kpi-value delay-positive";
+    } else if (stageVariance < 0) {
+      dom.kpiDelay.textContent = `${Math.abs(stageVariance)} days ahead`;
+      dom.kpiDelay.className = "kpi-value delay-good";
+    } else {
+      dom.kpiDelay.textContent = "On time";
+      dom.kpiDelay.className = "kpi-value delay-good";
+    }
 
     dom.kpiDelayFoot.textContent = current
-      ? `Target ${formatDateWithYear(targetDate)}`
-      : "Compared with Current Stage Target";
+      ? `Original ${formatDateWithYear(baselineDate)}`
+      : "Compared with Original baseline";
 
     dom.kpiProgress.textContent = `${progress}%`;
     dom.progressBar.style.width = `${progress}%`;
@@ -932,16 +947,14 @@
     segmentStart,
     segmentFinish
   ) {
-    const displayedDate = cloneDate(
-      item.actual ||
-      item.estimate ||
-      item.target ||
-      item.date
+    const displayedDate = cloneDate(item.date);
+    const baselineDate = cloneDate(
+      item.baselineDate || item.date
     );
 
-    const stageDelay =
-      displayedDate && item.target
-        ? Math.max(0, diffDays(item.target, displayedDate))
+    const stageVariance =
+      displayedDate && baselineDate
+        ? diffDays(baselineDate, displayedDate)
         : 0;
 
     const duration = Math.max(
@@ -949,15 +962,23 @@
       diffDays(segmentStart, segmentFinish)
     );
 
+    let varianceText = "On time";
+
+    if (stageVariance > 0) {
+      varianceText = `+${stageVariance} days`;
+    } else if (stageVariance < 0) {
+      varianceText = `${Math.abs(stageVariance)} days ahead`;
+    }
+
     dom.tooltip.innerHTML = `
       <strong>${escapeHtml(partNo)} · ${escapeHtml(item.stage.name)}</strong>
       Row: ${type}<br>
-      Target: ${formatDateWithYear(item.target)}<br>
+      Original baseline: ${formatDateWithYear(baselineDate)}<br>
       Estimate: ${formatDateWithYear(item.estimate)}<br>
       Actual: ${formatDateWithYear(item.actual)}<br>
       Displayed date: ${formatDateWithYear(displayedDate)}<br>
       Source: ${escapeHtml(item.source)}<br>
-      Stage delay: ${stageDelay > 0 ? `+${stageDelay} days` : "On time"}<br>
+      Delay vs Original: ${varianceText}<br>
       Stage span: ${duration} day(s)
     `;
 
@@ -1029,7 +1050,15 @@
      * Text values must use MM/DD/YY or MM/DD/YYYY.
      */
     if (value instanceof Date && !Number.isNaN(value.getTime())) {
-      return stripTime(value);
+      /*
+       * Some Excel readers create Date objects with a timezone offset.
+       * Rebuild the date from the visible calendar fields to avoid a -1 day shift.
+       */
+      return new Date(
+        value.getFullYear(),
+        value.getMonth(),
+        value.getDate()
+      );
     }
 
     if (typeof value === "number" && Number.isFinite(value)) {

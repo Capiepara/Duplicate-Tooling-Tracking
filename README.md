@@ -86,3 +86,23 @@ Then in GitHub Desktop:
 - Progress = stages with Actual divided by total stages.
 - Tooltip delay uses the same stage-level formula.
 - KPI dates display as `MM/DD/YY`.
+
+
+## V9.1 — Excel date timezone fix
+
+- Excel dates are read as serial numbers instead of JavaScript Date objects.
+- Prevents a one-day shift such as `07/15/26` becoming `07/14/26`.
+- The tooltip and KPI now use the exact date stored in Excel.
+
+
+## V10 — Original vs Actual timeline
+
+- Original baseline uses the Actual column from the Original row.
+- Actual timeline uses Actual from the Actual row; if blank, it uses Estimate.
+- Current Stage follows today's position on the displayed timeline.
+- Delay = displayed Actual/Estimate date minus Original-row Actual date for the same stage.
+- Tooltip and KPI use the same delay calculation.
+- Example from `test_05.xlsx`, Part B, Quotation:
+  - Original baseline: 06/16/26
+  - Actual: 07/15/26
+  - Delay: +29 days

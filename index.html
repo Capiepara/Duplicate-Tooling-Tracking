@@ -6,7 +6,7 @@
   <meta name="description" content="Excel-based development tracking Gantt chart" />
   <title>Development Tracking Gantt</title>
 
-  <link rel="stylesheet" href="./style.css?v=9.0.0" />
+  <link rel="stylesheet" href="./style.css?v=10.0.0" />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 
@@ -14,7 +14,7 @@
   <main class="app-shell">
     <header class="topbar">
       <div>
-        <h1>Development Tracking Gantt <span class="version">V9</span></h1>
+        <h1>Development Tracking Gantt <span class="version">V10</span></h1>
         <p>Import Excel, select a sheet, and compare Original vs Actual timeline.</p>
       </div>
 
@@ -100,7 +100,7 @@
       <article class="kpi-card">
         <div class="kpi-label">Current Stage Delay</div>
         <div id="kpiDelay" class="kpi-value">—</div>
-        <div id="kpiDelayFoot" class="kpi-foot">Compared with Current Stage Target</div>
+        <div id="kpiDelayFoot" class="kpi-foot">Compared with Original baseline</div>
       </article>
 
       <article class="kpi-card">
@@ -138,6 +138,6 @@
 
   <div id="tooltip" class="tooltip hidden"></div>
 
-  <script src="./app.js?v=9.0.0"></script>
+  <script src="./app.js?v=10.0.0"></script>
 </body>
 </html>

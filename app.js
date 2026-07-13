@@ -627,12 +627,14 @@
   function renderHeader() {
     const totalWidth = state.weeks.length * WEEK_WIDTH;
     const yearGroups = makeYearGroups(state.weeks);
+    const monthGroups = makeMonthGroups(state.weeks);
 
     const yearRow = document.createElement("div");
     yearRow.className = "year-row";
 
     yearRow.innerHTML = `
       <div class="year-left">Part No.</div>
+      <div class="year-kickoff">OPM Kick Off</div>
       <div class="year-type">Original / Actual</div>
       <div class="year-timeline" style="width:${totalWidth}px">
         ${yearGroups
@@ -650,11 +652,35 @@
       </div>
     `;
 
+    const monthRow = document.createElement("div");
+    monthRow.className = "month-row";
+
+    monthRow.innerHTML = `
+      <div class="month-left"></div>
+      <div class="month-kickoff"></div>
+      <div class="month-type"></div>
+      <div class="month-timeline" style="width:${totalWidth}px">
+        ${monthGroups
+          .map(
+            (group) => `
+              <div
+                class="month-block"
+                style="width:${group.count * WEEK_WIDTH}px"
+              >
+                ${group.label}
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+
     const weekRow = document.createElement("div");
     weekRow.className = "week-row";
 
     weekRow.innerHTML = `
       <div class="week-left"></div>
+      <div class="week-kickoff"></div>
       <div class="week-type"></div>
       <div class="week-timeline" style="width:${totalWidth}px">
         ${state.weeks
@@ -671,6 +697,7 @@
     `;
 
     dom.ganttCanvas.appendChild(yearRow);
+    dom.ganttCanvas.appendChild(monthRow);
     dom.ganttCanvas.appendChild(weekRow);
   }
 
@@ -682,6 +709,18 @@
     const partCell = document.createElement("div");
     partCell.className = "part-cell";
     partCell.textContent = type === "Original" ? partNo : "";
+
+    const kickoffItem = schedule.find(
+      (item) => item.stage.key === "opm"
+    );
+
+    const kickoffDate = kickoffItem
+      ? cloneDate(kickoffItem.date)
+      : null;
+
+    const kickoffCell = document.createElement("div");
+    kickoffCell.className = "kickoff-cell";
+    kickoffCell.textContent = formatDateWithYear(kickoffDate);
 
     const typeCell = document.createElement("div");
     typeCell.className =
@@ -697,15 +736,6 @@
         return;
       }
 
-      /*
-       * A stage owns the time BEFORE its milestone:
-       * previous milestone -> current milestone.
-       *
-       * Example:
-       * POR = 07/01
-       * Tooling Build = 12/28
-       * The 180-day interval is colored Tooling Build, not POR.
-       */
       const previousItem = schedule[index - 1];
       const segmentStart = previousItem
         ? previousItem.date
@@ -753,6 +783,7 @@
           event,
           partNo,
           type,
+          kickoffDate,
           item,
           segmentStart,
           segmentFinish
@@ -766,6 +797,7 @@
     });
 
     row.appendChild(partCell);
+    row.appendChild(kickoffCell);
     row.appendChild(typeCell);
     row.appendChild(timeline);
 
@@ -782,8 +814,8 @@
     const line = document.createElement("div");
     line.className = "today-line";
     line.style.left =
-      `${82 + 94 + dateOffset(today)}px`;
-    line.style.top = "28px";
+      `${82 + 104 + 94 + dateOffset(today)}px`;
+    line.style.top = "54px";
     line.style.height = `${48 + rowCount * 30}px`;
 
     dom.ganttCanvas.appendChild(line);
@@ -943,6 +975,7 @@
     event,
     partNo,
     type,
+    kickoffDate,
     item,
     segmentStart,
     segmentFinish
@@ -973,6 +1006,7 @@
     dom.tooltip.innerHTML = `
       <strong>${escapeHtml(partNo)} · ${escapeHtml(item.stage.name)}</strong>
       Row: ${type}<br>
+      OPM Kick Off: ${formatDateWithYear(kickoffDate)}<br>
       Original baseline: ${formatDateWithYear(baselineDate)}<br>
       Estimate: ${formatDateWithYear(item.estimate)}<br>
       Actual: ${formatDateWithYear(item.actual)}<br>
@@ -1020,6 +1054,33 @@
         last.count += 1;
       } else {
         groups.push({ year, count: 1 });
+      }
+    });
+
+    return groups;
+  }
+
+  function makeMonthGroups(weeks) {
+    const groups = [];
+
+    weeks.forEach((week) => {
+      const monthKey =
+        `${week.getFullYear()}-${week.getMonth()}`;
+
+      const label = week.toLocaleString("en-US", {
+        month: "short",
+      });
+
+      const last = groups[groups.length - 1];
+
+      if (last && last.key === monthKey) {
+        last.count += 1;
+      } else {
+        groups.push({
+          key: monthKey,
+          label,
+          count: 1,
+        });
       }
     });
 

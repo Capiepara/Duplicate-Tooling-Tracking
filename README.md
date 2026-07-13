@@ -106,3 +106,13 @@ Then in GitHub Desktop:
   - Original baseline: 06/16/26
   - Actual: 07/15/26
   - Delay: +29 days
+
+
+## V11 — OPM Kick Off column
+
+- Adds a fixed `OPM Kick Off` column beside Part No.
+- Original row shows the Original OPM date.
+- Actual row shows the Actual-row OPM date.
+- The first three columns stay frozen while scrolling horizontally.
+- Tooltip includes OPM Kick Off.
+- Timeline header now includes Year, Month, and Week.

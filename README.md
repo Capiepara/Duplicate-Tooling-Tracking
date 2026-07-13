@@ -55,3 +55,14 @@ Then in GitHub Desktop:
 - The web no longer guesses years.
 - Dates such as `12/28/26`, `01/27/27`, and `05/24/27` are read exactly.
 - The timeline ends two weeks after the latest milestone.
+
+
+## V8 — Milestone interval Gantt
+
+- Original and Actual are milestone timelines.
+- Each stage color fills from its milestone date to the next stage milestone.
+- The final SER stage fills for one week only.
+- Actual uses Actual date when available; otherwise Estimate / Forecast.
+- Forecast delay is carried only into stages without Actual dates.
+- The timeline stops one week after the last milestone.
+- Excel dates must be real dates displayed as `MM/DD/YY`.

@@ -423,31 +423,31 @@
 
   function makeOriginalSchedule(row) {
     const milestones = [];
-    let previousFinish = null;
+    let previousDate = null;
 
     row.milestones.forEach((item) => {
-      const finish = cloneDate(item.target || item.estimate || item.actual);
+      const date = cloneDate(item.target || item.estimate || item.actual);
 
-      if (!finish) {
+      if (!date) {
         return;
       }
 
-      const safeFinish =
-        previousFinish && finish < previousFinish
-          ? cloneDate(previousFinish)
-          : finish;
+      const safeDate =
+        previousDate && date < previousDate
+          ? cloneDate(previousDate)
+          : date;
 
       milestones.push({
         stage: item.stage,
-        start: previousFinish ? cloneDate(previousFinish) : cloneDate(safeFinish),
-        finish: cloneDate(safeFinish),
+        date: cloneDate(safeDate),
         target: cloneDate(item.target),
         estimate: cloneDate(item.estimate),
         actual: cloneDate(item.actual),
         source: "Target",
+        delay: 0,
       });
 
-      previousFinish = cloneDate(safeFinish);
+      previousDate = cloneDate(safeDate);
     });
 
     return milestones;
@@ -459,12 +459,12 @@
     );
 
     const milestones = [];
-    let previousFinish = null;
-    let accumulatedDelay = 0;
+    let previousDate = null;
+    let carryDelay = 0;
 
     row.milestones.forEach((item) => {
       const original = originalByKey.get(item.stage.key);
-      const baselineFinish = original ? original.finish : item.target;
+      const baselineDate = original ? original.date : item.target;
 
       let source = "Target";
       let candidate = null;
@@ -473,40 +473,46 @@
         candidate = cloneDate(item.actual);
         source = "Actual";
       } else if (item.estimate) {
-        candidate = addDays(item.estimate, accumulatedDelay);
-        source = accumulatedDelay > 0 ? "Forecast + Delay" : "Estimate";
+        candidate = addDays(item.estimate, carryDelay);
+        source = carryDelay > 0 ? "Forecast + Delay" : "Estimate";
       } else if (item.target) {
-        candidate = addDays(item.target, accumulatedDelay);
-        source = accumulatedDelay > 0 ? "Target + Delay" : "Target";
+        candidate = addDays(item.target, carryDelay);
+        source = carryDelay > 0 ? "Target + Delay" : "Target";
       }
 
       if (!candidate) {
         return;
       }
 
-      if (previousFinish && candidate < previousFinish) {
-        candidate = cloneDate(previousFinish);
+      if (previousDate && candidate < previousDate) {
+        candidate = cloneDate(previousDate);
       }
 
-      const delay =
-        baselineFinish && candidate
-          ? Math.max(0, diffDays(baselineFinish, candidate))
+      const stageDelay =
+        baselineDate && candidate
+          ? Math.max(0, diffDays(baselineDate, candidate))
           : 0;
 
-      accumulatedDelay = Math.max(accumulatedDelay, delay);
+      /*
+       * Completed stages use their real Actual date.
+       * The largest known delay is then carried into later stages that
+       * do not yet have Actual dates.
+       */
+      if (item.actual) {
+        carryDelay = Math.max(carryDelay, stageDelay);
+      }
 
       milestones.push({
         stage: item.stage,
-        start: previousFinish ? cloneDate(previousFinish) : cloneDate(candidate),
-        finish: cloneDate(candidate),
+        date: cloneDate(candidate),
         target: cloneDate(item.target),
         estimate: cloneDate(item.estimate),
         actual: cloneDate(item.actual),
         source,
-        delay,
+        delay: stageDelay,
       });
 
-      previousFinish = cloneDate(candidate);
+      previousDate = cloneDate(candidate);
     });
 
     return milestones;
@@ -520,14 +526,14 @@
 
     state.parts.forEach((part) => {
       [...part.original, ...part.actual].forEach((item) => {
-        if (item.finish && item.finish > maxFinish) {
-          maxFinish = item.finish;
+        if (item.date && item.date > maxFinish) {
+          maxFinish = item.date;
         }
       });
     });
 
     state.timelineStart = reportStart;
-    state.timelineEnd = getMonday(addDays(maxFinish, 14));
+    state.timelineEnd = getMonday(addDays(maxFinish, 7));
     state.weeks = [];
 
     for (
@@ -590,11 +596,11 @@
             return false;
           }
 
-          if (from && item.finish < from) {
+          if (from && item.date < from) {
             return false;
           }
 
-          if (to && item.finish > to) {
+          if (to && item.date > to) {
             return false;
           }
 
@@ -678,20 +684,35 @@
     timeline.className = "timeline-row";
     timeline.style.width = `${state.weeks.length * WEEK_WIDTH}px`;
 
-    schedule.forEach((item) => {
+    schedule.forEach((item, index) => {
       if (selectedStage !== "ALL" && item.stage.key !== selectedStage) {
         return;
       }
 
+      /*
+       * Each stage occupies the interval from its milestone date
+       * to the next stage milestone. The final SER stage is shown
+       * for one week only.
+       */
+      const segmentStart = item.date;
+      const nextItem = schedule[index + 1];
+      const segmentFinish = nextItem
+        ? nextItem.date
+        : addDays(item.date, 7);
+
+      if (!segmentStart || !segmentFinish) {
+        return;
+      }
+
       const visibleStart =
-        item.start < state.timelineStart
+        segmentStart < state.timelineStart
           ? state.timelineStart
-          : item.start;
+          : segmentStart;
 
       const visibleFinish =
-        item.finish > state.timelineEnd
+        segmentFinish > state.timelineEnd
           ? state.timelineEnd
-          : item.finish;
+          : segmentFinish;
 
       if (
         visibleFinish < state.timelineStart ||
@@ -704,13 +725,26 @@
       segment.className = "stage-segment";
       segment.style.background = item.stage.color;
       segment.style.left = `${dateOffset(visibleStart)}px`;
+
+      const durationDays = Math.max(
+        1,
+        diffDays(visibleStart, visibleFinish)
+      );
+
       segment.style.width = `${Math.max(
         DAY_WIDTH,
-        (diffDays(visibleStart, visibleFinish) + 1) * DAY_WIDTH
+        durationDays * DAY_WIDTH
       )}px`;
 
       segment.addEventListener("mouseenter", (event) => {
-        showTooltip(event, partNo, type, item);
+        showTooltip(
+          event,
+          partNo,
+          type,
+          item,
+          segmentStart,
+          segmentFinish
+        );
       });
 
       segment.addEventListener("mousemove", moveTooltip);
@@ -766,24 +800,30 @@
 
     const today = stripTime(new Date());
     const schedule = selectedPart.actual;
-    const current =
-      schedule.find(
-        (item) => today >= item.start && today <= item.finish
-      ) ||
-      schedule.find((item) => today < item.finish) ||
-      schedule[schedule.length - 1];
 
-    const actualCompleted = schedule.filter(
+    let current = schedule[schedule.length - 1] || null;
+
+    for (let index = 0; index < schedule.length; index += 1) {
+      const item = schedule[index];
+      const next = schedule[index + 1];
+
+      if (!next || today < next.date) {
+        current = item;
+        break;
+      }
+    }
+
+    const completedActual = schedule.filter(
       (item) => item.actual && item.actual <= today
     ).length;
 
     const progress = Math.round(
-      (actualCompleted / Math.max(1, schedule.length)) * 100
+      (completedActual / Math.max(1, schedule.length)) * 100
     );
 
     const delay = getPartDelay(selectedPart);
     const finish = schedule.length
-      ? schedule[schedule.length - 1].finish
+      ? schedule[schedule.length - 1].date
       : null;
 
     dom.kpiPart.textContent = selectedPart.partNo;
@@ -807,11 +847,11 @@
 
   function getPartDelay(part) {
     const originalFinish = part.original.length
-      ? part.original[part.original.length - 1].finish
+      ? part.original[part.original.length - 1].date
       : null;
 
     const actualFinish = part.actual.length
-      ? part.actual[part.actual.length - 1].finish
+      ? part.actual[part.actual.length - 1].date
       : null;
 
     if (!originalFinish || !actualFinish) {
@@ -868,8 +908,19 @@
     render();
   }
 
-  function showTooltip(event, partNo, type, item) {
+  function showTooltip(
+    event,
+    partNo,
+    type,
+    item,
+    segmentStart,
+    segmentFinish
+  ) {
     const delay = item.delay || 0;
+    const duration = Math.max(
+      1,
+      diffDays(segmentStart, segmentFinish)
+    );
 
     dom.tooltip.innerHTML = `
       <strong>${escapeHtml(partNo)} · ${escapeHtml(item.stage.name)}</strong>
@@ -877,9 +928,10 @@
       Target: ${formatDate(item.target)}<br>
       Estimate: ${formatDate(item.estimate)}<br>
       Actual: ${formatDate(item.actual)}<br>
-      Displayed finish: ${formatDate(item.finish)}<br>
+      Milestone: ${formatDate(item.date)}<br>
       Source: ${escapeHtml(item.source)}<br>
-      Delay: ${delay > 0 ? `+${delay} days` : "On time"}
+      Delay: ${delay > 0 ? `+${delay} days` : "On time"}<br>
+      Stage span: ${duration} day(s)
     `;
 
     dom.tooltip.classList.remove("hidden");
